@@ -1,0 +1,1 @@
+<p><?php esc_html_e( 'Need help configuring environments? Use staging keys for Studio and production keys for VisitBrooklyn.nyc. Never store real secrets in version control.', 'brooklyn-ai-planner' ); ?></p>

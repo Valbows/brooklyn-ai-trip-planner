@@ -1,0 +1,11 @@
+/*
+!.gitignore
+!plan.md
+!log.md
+!README.md
+!wp-content/
+wp-content/*
+!wp-content/plugins/
+wp-content/plugins/*
+!wp-content/plugins/brooklyn-ai-planner/
+!wp-content/plugins/brooklyn-ai-planner/**
