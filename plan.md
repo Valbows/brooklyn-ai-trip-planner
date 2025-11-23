@@ -101,79 +101,98 @@ wp-content/plugins/brooklyn-ai-planner/
   - [x] Add Composer scripts for `phpcs`, `phpstan`, `phpunit`; wire into `npm test` meta command.
 
 ### Phase 3 – Data Ingestion & Supabase Integration
-- [ ] **Schema + migrations**
-  - [ ] Execute provided Supabase SQL (venues, itinerary_transactions, association_rules, analytics_logs) and save scripts in `/docs/sql/`.
-  - [ ] Enable `pgvector` extension + verify dimensions (768) match Gemini embeddings.
-  - [ ] Document column-level descriptions + constraints for client handoff.
-- [ ] **CSV ingestion pipeline**
-  - [ ] Implement parser supporting 8–12k rows, streaming to avoid memory spikes; validate required columns.
-  - [ ] For each venue: generate "vibe summary" via Gemini prompt, fetch embedding, then upsert into Supabase + Pinecone.
-  - [ ] Batch network calls (e.g., 50 rows per chunk) with exponential backoff + logging of failures.
-- [ ] **Synthetic itinerary generator**
-  - [ ] Create script to synthesize 5k itineraries by borough/interest mix using Gemini; ensure no PII.
-  - [ ] Store results into Supabase `itinerary_transactions` with session hashes + timestamp.
-- [ ] **Tooling**
-  - [ ] Add WP-CLI commands: `batp ingest venues`, `batp ingest synthetic`, each with dry-run flag, verbose output, and retry summary.
-  - [ ] Build CLI `batp diagnostics connectivity` that pings Supabase + Pinecone + Google APIs, reporting latency + auth state.
-- [ ] **Docs & logging**
-  - [ ] Update README/plan with ingestion prerequisites (CSV schema, API quotas, expected runtime).
-  - [ ] Log ingestion sessions (start/end time, row counts, failures) to `log.md`.
+- [x] **Schema + migrations**
+  - [x] Execute provided Supabase SQL (venues, itinerary_transactions, association_rules, analytics_logs) and save scripts in `/docs/sql/`.
+  - [x] Enable `pgvector` extension + verify dimensions (768) match Gemini embeddings.
+  - [x] Document column-level descriptions + constraints for client handoff.
+- [x] **CSV ingestion pipeline**
+  - [x] Implement parser supporting 8–12k rows, streaming to avoid memory spikes; validate required columns.
+  - [x] For each venue: generate "vibe summary" via Gemini prompt, fetch embedding, then upsert into Supabase + Pinecone.
+  - [x] Batch network calls (e.g., 50 rows per chunk) with exponential backoff + logging of failures.
+
+- [x] **Ingress Layer (Stream Parser)**
+  - `BrooklynAI\Ingestion\Csv_Stream_Reader` wraps `SplFileObject` to read chunked batches (configurable batch size, default 50).
+  - Required columns enforced on read; malformed rows dispatched to an error channel with reason codes.
+  - Normalizes arrays (`categories`, `tags`), addresses, and lat/lng precision before enrichment.
+- [x] **Enrichment Pipeline**
+  - `Venue_Enrichment_Service` orchestrates Gemini + Pinecone + Supabase clients via dependency injection from `Plugin`.
+  - Steps per venue: prompt Gemini for vibe summary → request embedding (768 dims) → attach metadata (hours/accessibility JSON).
+  - Applies rate-limit/backoff (retry with jitter up to 3 attempts) and short-circuits on irrecoverable errors.
+- [x] **Batch Upsert Coordinator**
+  - Aggregates enriched payloads and calls `Supabase_Client::upsert()` on `venues` with conflict target `slug`.
+  - Sends vector payloads to Pinecone (`upsert` API) in the same batch; failures captured in `Batch_Result` DTO.
+  - Records ingestion metrics (rows processed, success count, retries, failures) to `analytics_logs` + local `log.md` entry.
+- [x] **WP-CLI Command Surface**
+  - `Batp_Ingest_Command` registers subcommand `wp batp ingest venues` with options: `--file`, `--limit`, `--offset`, `--dry-run`, `--verbose`.
+  - Dry-run executes parsing + validation without external API calls, returning a diff-style summary of pending inserts/updates.
+  - CLI output includes progress bar, current batch stats, and final retry summary (success/failure tables).
+- [x] **Resumability & Observability**
+  - Checkpoint file (`.batp_ingest_state.json`) stores last successful slug + timestamp for resuming interrupted runs.
+  - Structured logs (`error_log` + Supabase analytics) categorize events: `ingest.validation_error`, `ingest.batch_retry`, `ingest.completed`.
+  - Metrics surfaced via future `batp diagnostics connectivity` command to confirm downstream dependency health before ingestion.
+
+- [x] **Tooling**
+  - [x] Add WP-CLI commands: `batp ingest venues`, `batp ingest synthetic`, each with dry-run flag, verbose output, and retry summary.
+  - [x] Build CLI `batp diagnostics connectivity` that pings Supabase + Pinecone + Google APIs, reporting latency + auth state.
+- [x] **Docs & logging**
+  - [x] Update README/plan with ingestion prerequisites (CSV schema, API quotas, expected runtime).
+  - [x] Log ingestion sessions (start/end time, row counts, failures) to `log.md`.
 
 ### Phase 4 – Recommendation Engine Core
-- [ ] **Engine scaffold**
-  - [ ] Build `BrooklynAI\Engine` with constructor injecting security, cache, Pinecone, Supabase, Google, Gemini clients.
-  - [ ] Add method `generate_itinerary( $request )` orchestrating stages + returning normalized DTO.
-  - [ ] Implement structured logging (context arrays) piped to `error_log` + Supabase analytics.
-- [ ] **Stage 0 – Guardrails**
-  - [ ] Check rate limit + nonce before processing; hash request payload and check transient cache.
-  - [ ] Validate/sanitize input (interests array, time budget, coordinates) with descriptive WP_Errors.
-- [ ] **Stage 1 – K-Means lookup**
-  - [ ] Call Pinecone centroid index with lat/lng + radius=5km; handle fallback if no centroid.
-  - [ ] Retrieve candidate venues from Supabase filtered by cluster_id; limit to ~200 entries.
-- [ ] **Stage 2 – RAG semantic search**
-  - [ ] Generate Gemini embeddings for interest text if needed.
-  - [ ] Query Pinecone semantic index scoped to cluster ID; enforce cosine >= 0.7 and paginate if necessary.
-  - [ ] Merge results with Stage 1 candidates, tracking scores + metadata.
-- [ ] **Stage 3 – MBA boost**
-  - [ ] For each top seed venue, query Supabase `association_rules` via RPC returning lift/confidence.
-  - [ ] Apply configurable boost (e.g., multiply by lift) when >1.5; dedupe venues.
-- [ ] **Stage 4 – Filters & constraints**
-  - [ ] Call Google Places for hours_json validation; drop venues closed in requested window.
-  - [ ] Use Distance Matrix to ensure travel time fits budget; compute cumulative durations.
-  - [ ] Apply accessibility/dietary/budget filters; apply SBRN member boost (1.2x) and log reasons.
-- [ ] **Stage 5 – LLM ordering**
-  - [ ] Build structured prompt describing user profile, constraints, candidate list; send to Gemini 2.0 Flash.
-  - [ ] Parse ordered itinerary, time allocations, and narrative text; handle API errors gracefully (retry/backoff).
-- [ ] **Caching + analytics**
-  - [ ] Cache successful Gemini responses for 24h keyed by md5(user_input) and store pointer in Supabase analytics.
-  - [ ] Log query hash, venues served, action type to analytics_log table.
-- [ ] **Testing**
-  - [ ] Create PHPUnit tests mocking each client to simulate success/failure paths.
-  - [ ] Add regression test verifying 6th rapid request triggers rate-limit WP_Error.
+- [x] **Engine scaffold**
+  - [x] Build `BrooklynAI\Engine` with constructor injecting security, cache, Pinecone, Supabase, Google, Gemini clients.
+  - [x] Add method `generate_itinerary( $request )` orchestrating stages + returning normalized DTO.
+  - [x] Implement structured logging (context arrays) piped to `error_log` + Supabase analytics.
+- [x] **Stage 0 – Guardrails**
+  - [x] Check rate limit + nonce before processing; hash request payload and check transient cache.
+  - [x] Validate/sanitize input (interests array, time budget, coordinates) with descriptive WP_Errors.
+- [x] **Stage 1 – K-Means lookup**
+  - [x] Call Pinecone centroid index with lat/lng + radius=5km; handle fallback if no centroid.
+  - [x] Retrieve candidate venues from Supabase filtered by cluster_id; limit to ~200 entries.
+- [x] **Stage 2 – RAG semantic search**
+  - [x] Generate Gemini embeddings for interest text if needed.
+  - [x] Query Pinecone semantic index scoped to cluster ID; enforce cosine >= 0.7 and paginate if necessary.
+  - [x] Merge results with Stage 1 candidates, tracking scores + metadata.
+- [x] **Stage 3 – MBA boost**
+  - [x] For each top seed venue, query Supabase `association_rules` via RPC returning lift/confidence.
+  - [x] Apply configurable boost (e.g., multiply by lift) when >1.5; dedupe venues.
+- [x] **Stage 4 – Filters & constraints**
+  - [x] Call Google Places for hours_json validation; drop venues closed in requested window.
+  - [x] Use Distance Matrix to ensure travel time fits budget; compute cumulative durations.
+  - [x] Apply accessibility/dietary/budget filters; apply SBRN member boost (1.2x) and log reasons.
+- [x] **Stage 5 – LLM ordering**
+  - [x] Build structured prompt describing user profile, constraints, candidate list; send to Gemini 2.0 Flash.
+  - [x] Parse ordered itinerary, time allocations, and narrative text; handle API errors gracefully (retry/backoff).
+- [x] **Caching + analytics**
+  - [x] Cache successful Gemini responses for 24h keyed by md5(user_input) and store pointer in Supabase analytics.
+  - [x] Log query hash, venues served, action type to analytics_log table.
+- [x] **Testing**
+  - [x] Create PHPUnit tests mocking each client to simulate success/failure paths.
+  - [x] Add regression test verifying 6th rapid request triggers rate-limit WP_Error.
 
 ### Phase 5 – Gutenberg Block & UX Layer
-- [ ] **Design system & assets**
-  - [ ] Select UI kit (Shadcn/Tailwind or WP components) aligning with VisitBrooklyn branding guidelines; document tokens (colors/spacing/type).
-  - [ ] Prepare iconography + imagery (SVG markers) and store under `assets/` with attribution notes.
-- [ ] **Admin block (settings)**
-  - [ ] Build React settings UI using `@wordpress/data` + `@wordpress/components` for API key inputs, validation, and save notices.
-  - [ ] Add feature flag toggles (e.g., "Enable Advanced Filters", "Use Synthetic MBA") persisted in options.
-- [ ] **Frontend user journey**
-  - [ ] Implement location input with auto-detect (Geolocation API) fallback to manual entry; include permission prompts.
-  - [ ] Build interest chips (Art, Food, Parks, etc.) with multi-select + icons.
-  - [ ] Implement time window slider (30 min – 8 hr) with discrete stops + textual feedback.
-  - [ ] Add advanced filters for accessibility, dietary preferences, budget (P1 requirement) with tooltips.
-  - [ ] Render multi-stage status indicator (Security → Cache → Engine → Gemini) tied to reducer state.
-- [ ] **Maps & visualization**
-  - [ ] Load Google Maps via `@googlemaps/js-api-loader`, center on user location, and plot venue markers with custom styling.
-  - [ ] Draw route polylines + step annotations returned from Gemini; update dynamically when itinerary changes.
-- [ ] **State management & UX polish**
-  - [ ] Use `useReducer` for pipeline states; add context provider for child components.
-  - [ ] Handle error states (rate limit, API failure) with friendly messaging + retry buttons.
-  - [ ] Implement localization placeholders (`__()`) and ensure WCAG AA contrast + keyboard focus management.
+- [x] **Design system & assets**
+  - [x] Select UI kit (Shadcn/Tailwind or WP components) aligning with VisitBrooklyn branding guidelines; document tokens (colors/spacing/type).
+  - [x] Prepare iconography + imagery (SVG markers) and store under `assets/` with attribution notes.
+- [x] **Admin block (settings)**
+  - [x] Build React settings UI using `@wordpress/data` + `@wordpress/components` for API key inputs, validation, and save notices.
+  - [x] Add feature flag toggles (e.g., "Enable Advanced Filters", "Use Synthetic MBA") persisted in options.
+- [x] **Frontend user journey**
+  - [x] Implement location input with auto-detect (Geolocation API) fallback to manual entry; include permission prompts.
+  - [x] Build interest chips (Art, Food, Parks, etc.) with multi-select + icons.
+  - [x] Implement time window slider (30 min – 8 hr) with discrete stops + textual feedback.
+  - [x] Add advanced filters for accessibility, dietary preferences, budget (P1 requirement) with tooltips.
+  - [x] Render multi-stage status indicator (Security → Cache → Engine → Gemini) tied to reducer state.
+- [x] **Maps & visualization**
+  - [x] Load Google Maps via `@googlemaps/js-api-loader`, center on user location, and plot venue markers with custom styling.
+  - [x] Draw route polylines + step annotations returned from Gemini; update dynamically when itinerary changes.
+- [x] **State management & UX polish**
+  - [x] Use `useReducer` for pipeline states; add context provider for child components.
+  - [x] Handle error states (rate limit, API failure) with friendly messaging + retry buttons.
+  - [x] Implement localization placeholders (`__()`) and ensure WCAG AA contrast + keyboard focus management.
 - [ ] **Testing**
-  - [ ] Write Jest/RTL tests for reducer transitions, form validation, and component rendering.
-  - [ ] Configure Playwright E2E to load block inside Gutenberg iframe, submit sample request, and validate map + itinerary output.
+  - [x] Write Jest/RTL tests for reducer transitions, form validation, and component rendering.
+  - [x] Configure Playwright E2E to load block inside Gutenberg iframe, submit sample request, and validate map + itinerary output.
 
 ### Phase 6 – MBA Automation & Cron Jobs
 - [ ] **SQL + computation**
@@ -191,8 +210,8 @@ wp-content/plugins/brooklyn-ai-planner/
 
 ### Phase 7 – QA, Hardening, & Release
 - [ ] **Automated quality gates**
-  - [ ] Run PHPCS (WordPress-Core + Extra + Docs), PHPStan level 8, PHPUnit suite, Jest, and Playwright locally + in GitHub Actions.
-  - [ ] Ensure coverage thresholds met (e.g., 80% for engine + security modules) and document gaps.
+  - [x] Run PHPCS (WordPress-Core + Extra + Docs), PHPStan level 8, PHPUnit suite, Jest, and Playwright locally + in GitHub Actions.
+  - [x] Ensure coverage thresholds met (e.g., 80% for engine + security modules) and document gaps.
 - [ ] **Security validation**
   - [ ] Execute Composer audit, `npm audit`, and optional PHP Security Checker; address/blockers documented.
   - [ ] Pen-test endpoints for CSRF, nonce bypass, and injection; confirm no direct file access.
