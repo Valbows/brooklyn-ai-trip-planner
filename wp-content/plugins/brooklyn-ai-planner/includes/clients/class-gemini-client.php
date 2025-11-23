@@ -14,14 +14,28 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 class Gemini_Client {
+	private const DEFAULT_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
+
 	private string $api_key;
 	private string $model;
 	private string $base_url;
 
-	public function __construct( string $api_key, string $model = 'gemini-2.0-flash', string $base_url = 'https://generativelanguage.googleapis.com/v1beta' ) {
+	public function __construct( string $api_key, string $model = 'gemini-2.0-flash', string $base_url = self::DEFAULT_BASE_URL ) {
 		$this->api_key  = $api_key;
 		$this->model    = $model;
 		$this->base_url = rtrim( $base_url, '/' );
+	}
+
+	/**
+	 * Calls embedContent endpoint to retrieve embeddings.
+	 *
+	 * @param array<string, mixed> $payload
+	 * @param string               $model
+	 * @return array<string, mixed>|WP_Error
+	 */
+	public function embed_content( array $payload, string $model = 'text-embedding-004' ): array|WP_Error {
+		$path = sprintf( 'models/%s:embedContent', rawurlencode( $model ) );
+		return $this->post( $path, $payload, array( 'model' => $model ) );
 	}
 
 	/**
@@ -31,29 +45,53 @@ class Gemini_Client {
 	 * @return array<string, mixed>|WP_Error
 	 */
 	public function generate_content( array $payload ): array|WP_Error {
-		$endpoint = sprintf( '%s/models/%s:generateContent?key=%s', $this->base_url, $this->model, rawurlencode( $this->api_key ) );
-		return $this->post( $endpoint, $payload );
+		$path = sprintf( 'models/%s:generateContent', rawurlencode( $this->model ) );
+		return $this->post( $path, $payload, array( 'model' => $this->model ) );
 	}
 
 	/**
+	 * Posts to Gemini API with shared error handling.
+	 *
 	 * @param array<string, mixed> $payload
+	 * @param array<string, string> $context
 	 * @return array<string, mixed>|WP_Error
 	 */
-	private function post( string $url, array $payload ): array|WP_Error {
-		$args = array(
-			'headers' => array(
-				'Content-Type' => 'application/json',
-			),
-			'body'    => wp_json_encode( $payload ),
-			'timeout' => 30,
+	private function post( string $path, array $payload, array $context = array() ): array|WP_Error {
+		$endpoint = $this->build_endpoint( $path );
+		$response = wp_remote_post(
+			$endpoint,
+			array(
+				'headers' => $this->headers(),
+				'body'    => wp_json_encode( $payload ),
+				'timeout' => 30,
+			)
 		);
-
-		$response = wp_remote_post( $url, $args );
 
 		if ( is_wp_error( $response ) ) {
 			return $response;
 		}
 
+		return $this->handle_response( $response, $context );
+	}
+
+	private function headers(): array {
+		return array(
+			'Content-Type' => 'application/json',
+			'Accept'       => 'application/json',
+		);
+	}
+
+	private function build_endpoint( string $path ): string {
+		$path = ltrim( $path, '/' );
+		$url  = sprintf( '%s/%s', $this->base_url, $path );
+
+		return add_query_arg( 'key', $this->api_key, $url );
+	}
+
+	/**
+	 * @param array<string, mixed> $context
+	 */
+	private function handle_response( array $response, array $context = array() ): array|WP_Error {
 		$status = wp_remote_retrieve_response_code( $response );
 		$body   = json_decode( wp_remote_retrieve_body( $response ), true );
 
@@ -61,13 +99,16 @@ class Gemini_Client {
 			return new WP_Error(
 				'batp_gemini_error',
 				__( 'Gemini request failed.', 'brooklyn-ai-planner' ),
-				array(
-					'status' => $status,
-					'body'   => $body,
+				array_merge(
+					$context,
+					array(
+						'status' => $status,
+						'body'   => $body,
+					)
 				)
 			);
 		}
 
-		return $body;
+		return is_array( $body ) ? $body : array();
 	}
 }

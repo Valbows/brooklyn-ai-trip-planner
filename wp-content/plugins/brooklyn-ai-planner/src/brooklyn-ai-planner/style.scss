@@ -5,8 +5,247 @@
  * Replace them with your own styles or remove the file completely.
  */
 
-.wp-block-create-block-brooklyn-ai-planner {
-	background-color: #21759b;
-	color: #fff;
-	padding: 2px;
+.batp-itinerary-block {
+	border: 2px solid #ff4f5e;
+	border-radius: 16px;
+	padding: 32px;
+	background: linear-gradient(135deg, #fff8f6 0%, #fff 100%);
+	box-shadow: 0 18px 40px rgba(10, 24, 39, 0.08);
+	max-width: 720px;
+	margin: 0 auto;
+	text-align: left;
+
+	&__heading {
+		font-family: "Space Grotesk", var(--wp--preset--font-family--heading, sans-serif);
+		font-size: clamp(2rem, 4vw, 2.8rem);
+		line-height: 1.1;
+		margin-bottom: 1rem;
+		color: #0a1827;
+	}
+
+	&__subheading {
+		font-family: Inter, var(--wp--preset--font-family--body, sans-serif);
+		font-size: 1.1rem;
+		line-height: 1.5;
+		color: #425466;
+		margin-bottom: 1.75rem;
+	}
+
+	&__header {
+		margin-bottom: 2rem;
+	}
+
+	&__cta {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.5rem;
+		padding: 0.9rem 1.75rem;
+		border: none;
+		border-radius: 999px;
+		font-weight: 600;
+		font-size: 1rem;
+		color: #fff;
+		transition: transform 160ms ease, box-shadow 160ms ease;
+		box-shadow: 0 12px 24px rgba(255, 79, 94, 0.32);
+		cursor: pointer;
+
+		&:hover {
+			transform: translateY(-1px);
+			box-shadow: 0 16px 32px rgba(255, 79, 94, 0.4);
+		}
+	}
+
+	&__meta {
+		font-size: 0.85rem;
+		color: #718096;
+		margin-top: 0.75rem;
+	}
+}
+
+.batp-itinerary-layout {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+	gap: 2rem;
+}
+
+.batp-itinerary-form {
+	display: grid;
+	gap: 1.5rem;
+	font-family: Inter, var(--wp--preset--font-family--body, sans-serif);
+	position: relative;
+	min-height: 100%;
+
+	&__field {
+		display: flex;
+		flex-direction: column;
+		gap: 0.75rem;
+	}
+
+	&__label {
+		font-weight: 600;
+		color: #0a1827;
+	}
+
+	input[type="text"] {
+		border: 1px solid #dfe3eb;
+		border-radius: 12px;
+		padding: 0.85rem 1rem;
+		font-size: 1rem;
+		transition: border-color 0.2s ease, box-shadow 0.2s ease;
+
+		&:focus {
+			border-color: var(--batp-highlight-color, #ff4f5e);
+			box-shadow: 0 0 0 3px rgba(255, 79, 94, 0.2);
+			outline: none;
+		}
+	}
+
+	&__range-value {
+		align-self: flex-start;
+		padding: 0.15rem 0.75rem;
+		border-radius: 999px;
+		background: rgba(255, 79, 94, 0.1);
+		color: #ff4f5e;
+		font-weight: 600;
+	}
+
+	&__footer {
+		display: flex;
+		flex-direction: column;
+		align-items: flex-start;
+	}
+
+	input[type="range"] {
+		appearance: none;
+		width: 100%;
+		height: 6px;
+		border-radius: 999px;
+		background: rgba(10, 24, 39, 0.1);
+		outline: none;
+		margin-top: 0.5rem;
+
+		&::-webkit-slider-thumb {
+			appearance: none;
+			width: 20px;
+			height: 20px;
+			border-radius: 50%;
+			background: var(--batp-highlight-color, #ff4f5e);
+			box-shadow: 0 6px 16px rgba(255, 79, 94, 0.35);
+			cursor: pointer;
+		}
+
+		&::-moz-range-thumb {
+			width: 20px;
+			height: 20px;
+			border-radius: 50%;
+			background: var(--batp-highlight-color, #ff4f5e);
+			border: none;
+			box-shadow: 0 6px 16px rgba(255, 79, 94, 0.35);
+			cursor: pointer;
+		}
+	}
+}
+
+.batp-itinerary-chips {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.75rem;
+}
+
+.batp-itinerary-chip {
+	position: relative;
+	border: 1px solid #dfe3eb;
+	border-radius: 999px;
+	padding: 0.4rem 1rem;
+	font-weight: 600;
+	color: #425466;
+	cursor: pointer;
+	transition: border-color 0.2s ease, background-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+
+	input {
+		position: absolute;
+		opacity: 0;
+		pointer-events: none;
+	}
+
+	span {
+		position: relative;
+		z-index: 1;
+	}
+
+	&:hover {
+		border-color: var(--batp-highlight-color, #ff4f5e);
+	}
+
+	&.is-selected {
+		background: var(--batp-highlight-color, #ff4f5e);
+		border-color: var(--batp-highlight-color, #ff4f5e);
+		color: #fff;
+		box-shadow: 0 10px 20px rgba(255, 79, 94, 0.25);
+	}
+}
+
+.batp-itinerary-map {
+	position: relative;
+	border: 1px dashed rgba(10, 24, 39, 0.15);
+	border-radius: 20px;
+	background: #f7fafc;
+	min-height: 320px;
+	padding: 1.5rem;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	text-align: center;
+
+	&__placeholder {
+		max-width: 320px;
+	}
+
+	&__eyebrow {
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		font-size: 0.75rem;
+		color: #718096;
+		margin-bottom: 0.5rem;
+	}
+
+	&__copy {
+		font-size: 1rem;
+		color: #425466;
+		line-height: 1.6;
+	}
+
+	&::after {
+		content: "";
+		position: absolute;
+		inset: 12px;
+		border-radius: 16px;
+		background: radial-gradient(circle, rgba(255, 79, 94, 0.12) 0%, rgba(255, 79, 94, 0) 60%);
+		pointer-events: none;
+		z-index: 0;
+	}
+
+	> * {
+		position: relative;
+		z-index: 1;
+	}
+}
+
+.batp-itinerary-form[data-state="loading"] {
+	opacity: 0.6;
+	pointer-events: none;
+
+	&::after {
+		content: "Generating itinerary…";
+		position: absolute;
+		inset: 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: rgba(255, 255, 255, 0.6);
+		font-weight: 600;
+		color: #0a1827;
+		border-radius: 16px;
+	}
 }

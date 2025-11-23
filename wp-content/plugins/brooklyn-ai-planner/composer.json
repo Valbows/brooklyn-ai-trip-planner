@@ -24,10 +24,7 @@
     "autoload-dev": {
         "psr-4": {
             "BrooklynAI\\Tests\\": "tests/phpunit/"
-        },
-        "files": [
-            "vendor/php-stubs/wordpress-stubs/wordpress-stubs.php"
-        ]
+        }
     },
     "config": {
         "preferred-install": "dist",

@@ -16,6 +16,8 @@
 		"start": "wp-scripts start --webpack-copy-php --blocks-manifest"
 	},
 	"devDependencies": {
+		"@playwright/test": "^1.56.1",
+		"@types/node": "^24.10.1",
 		"@wordpress/scripts": "^31.0.0"
 	}
 }

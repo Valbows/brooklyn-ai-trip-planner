@@ -1,9 +1,22 @@
 <?php
+echo "Bootstrap loaded\n";
 // phpcs:ignoreFile WordPress.Files.FileName.InvalidClassFileName
 require dirname( __DIR__, 2 ) . '/vendor/autoload.php';
+echo "Vendor autoloaded\n";
+
+if ( ! defined( 'ABSPATH' ) ) {
+	define( 'ABSPATH', dirname( __DIR__, 2 ) . '/' );
+}
+
+if ( ! defined( 'BATP_PLUGIN_PATH' ) ) {
+	define( 'BATP_PLUGIN_PATH', dirname( __DIR__, 2 ) . '/' );
+}
+
 require dirname( __DIR__, 2 ) . '/includes/class-autoloader.php';
+echo "Class autoloader included\n";
 
 \BrooklynAI\Autoloader::register();
+echo "Autoloader registered\n";
 
 use Brain\Monkey;
 
@@ -132,12 +145,63 @@ if ( ! class_exists( 'WP_Error' ) ) {
 		public function get_error_code() {
 			return key( $this->errors );
 		}
+
+		public function get_error_message( $code = '' ) {
+			if ( empty( $code ) ) {
+				$code = $this->get_error_code();
+			}
+			return isset( $this->errors[ $code ][0] ) ? $this->errors[ $code ][0] : '';
+		}
+
+		public function add( $code, $message, $data = '' ) {
+			$this->errors[ $code ] = array( $message, $data );
+		}
+	}
+}
+
+echo "Starting Monkey setup\n";
+if ( ! function_exists( 'sanitize_title' ) ) {
+	function sanitize_title( $title, $fallback_title = '', $context = 'save' ) {
+		return strtolower( preg_replace( '/[^a-z0-9-]/', '-', $title ) );
+	}
+}
+
+if ( ! function_exists( 'wp_strip_all_tags' ) ) {
+	function wp_strip_all_tags( $string, $remove_breaks = false ) {
+		return strip_tags( $string );
+	}
+}
+
+if ( ! function_exists( 'sanitize_email' ) ) {
+	function sanitize_email( $email ) {
+		return filter_var( $email, FILTER_SANITIZE_EMAIL );
+	}
+}
+
+if ( ! function_exists( 'esc_url_raw' ) ) {
+	function esc_url_raw( $url, $protocols = null ) {
+		return $url;
+	}
+}
+
+if ( ! function_exists( 'wp_kses_post' ) ) {
+	function wp_kses_post( $data ) {
+		return $data;
+	}
+}
+
+if ( ! function_exists( 'wp_mkdir_p' ) ) {
+	function wp_mkdir_p( $target ) {
+		return mkdir( $target, 0755, true );
 	}
 }
 
 Monkey\setUp();
+echo "Monkey setup complete\n";
 register_shutdown_function(
 	static function () {
 		Monkey\tearDown();
 	}
 );
+
+echo "Bootstrap complete\n";

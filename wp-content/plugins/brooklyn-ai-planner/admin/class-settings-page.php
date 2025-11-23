@@ -15,6 +15,15 @@ class Settings_Page {
 	private const OPTION_KEY = 'batp_settings';
 	private const PAGE_SLUG  = 'batp-settings';
 
+	/**
+	 * @var array<int, array<string, string>>
+	 */
+	private array $fields;
+
+	public function __construct() {
+		$this->fields = $this->build_fields();
+	}
+
 	public function register(): void {
 		add_action( 'admin_menu', array( $this, 'add_menu' ) );
 		add_action( 'admin_init', array( $this, 'register_settings' ) );
@@ -48,7 +57,7 @@ class Settings_Page {
 			self::PAGE_SLUG
 		);
 
-		foreach ( $this->fields() as $field ) {
+		foreach ( $this->fields as $field ) {
 			add_settings_field(
 				$field['id'],
 				$field['label'],
@@ -67,10 +76,15 @@ class Settings_Page {
 	public function sanitize_settings( array $input ): array {
 		$output = $this->get_settings();
 
-		foreach ( $this->fields() as $field ) {
+		foreach ( $this->fields as $field ) {
 			$key = $field['id'];
-			if ( isset( $input[ $key ] ) && '' !== trim( (string) $input[ $key ] ) ) {
-				$output[ $key ] = sanitize_text_field( $input[ $key ] );
+			if ( ! isset( $input[ $key ] ) ) {
+				continue;
+			}
+
+			$clean = $this->sanitize_secret_value( (string) $input[ $key ] );
+			if ( '' !== $clean ) {
+				$output[ $key ] = $clean;
 			}
 		}
 
@@ -100,16 +114,9 @@ class Settings_Page {
 	 * @param array{id:string,label:string,description?:string} $field
 	 */
 	public function render_field( array $field ): void {
-		$settings = $this->get_settings();
-		$value    = $settings[ $field['id'] ] ?? '';
-		$masked   = $value ? $this->mask_value( $value ) : '';
+		$value = $this->get_settings_value( $field['id'] );
 
-		printf(
-			'<input type="password" id="%1$s" name="%2$s[%1$s]" value="%3$s" class="regular-text" autocomplete="off" />',
-			esc_attr( $field['id'] ),
-			esc_attr( self::OPTION_KEY ),
-			esc_attr( $masked )
-		);
+		$this->render_secret_input( $field, $value );
 
 		if ( ! empty( $field['description'] ) ) {
 			printf( '<p class="description">%s</p>', esc_html( $field['description'] ) );
@@ -118,6 +125,10 @@ class Settings_Page {
 
 	public function add_help_tab(): void {
 		$screen = get_current_screen();
+		if ( null === $screen ) {
+			return;
+		}
+
 		$screen->add_help_tab(
 			array(
 				'id'      => 'batp_help',
@@ -141,10 +152,17 @@ class Settings_Page {
 		return is_array( $value ) ? $value : array();
 	}
 
+	private function get_settings_value( string $key ): string {
+		$settings = $this->get_settings();
+		$value    = $settings[ $key ] ?? '';
+
+		return is_string( $value ) ? $value : '';
+	}
+
 	/**
 	 * @return array<int, array<string, string>>
 	 */
-	private function fields(): array {
+	private function build_fields(): array {
 		return array(
 			array(
 				'id'          => 'gemini_api_key',
@@ -169,11 +187,33 @@ class Settings_Page {
 		);
 	}
 
+	private function render_secret_input( array $field, string $value ): void {
+		printf(
+			'<input type="password" id="%1$s" name="%2$s[%1$s]" value="" class="regular-text" autocomplete="off" placeholder="%3$s" />',
+			esc_attr( $field['id'] ),
+			esc_attr( self::OPTION_KEY ),
+			esc_attr( $this->mask_value( $value ) )
+		);
+	}
+
 	private function mask_value( string $value ): string {
+		if ( '' === $value ) {
+			return '';
+		}
+
 		if ( strlen( $value ) <= 4 ) {
 			return str_repeat( '*', strlen( $value ) );
 		}
 
 		return str_repeat( '*', strlen( $value ) - 4 ) . substr( $value, -4 );
+	}
+
+	private function sanitize_secret_value( string $value ): string {
+		$trimmed = trim( $value );
+		if ( '' === $trimmed ) {
+			return '';
+		}
+
+		return sanitize_text_field( $trimmed );
 	}
 }

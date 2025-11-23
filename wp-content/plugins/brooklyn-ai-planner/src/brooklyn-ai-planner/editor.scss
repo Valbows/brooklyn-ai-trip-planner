@@ -5,5 +5,17 @@
  */
 
 .wp-block-create-block-brooklyn-ai-planner {
-	border: 1px dotted #f00;
+
+	.batp-itinerary-block {
+		box-shadow: none;
+		max-width: 100%;
+	}
+
+	.batp-itinerary-layout {
+		grid-template-columns: minmax(280px, 1fr);
+	}
+
+	.batp-itinerary-map {
+		min-height: 220px;
+	}
 }

@@ -20,6 +20,54 @@
  * @see https://developer.wordpress.org/block-editor/reference-guides/block-api/block-metadata/#view-script
  */
 
-/* eslint-disable no-console */
-console.log( 'Hello World! (from create-block-brooklyn-ai-planner block)' );
-/* eslint-enable no-console */
+const initItineraryForm = () => {
+	const form = document.querySelector( '[data-batp-itinerary-form]' );
+	if ( ! form ) {
+		return;
+	}
+
+	const durationInput = form.querySelector( '[data-batp-duration]' );
+	const durationOutput = form.querySelector( '[data-batp-duration-output]' );
+	const chips = Array.from(
+		form.querySelectorAll( '.batp-itinerary-chip input[type="checkbox"]' )
+	);
+
+	if ( durationInput && durationOutput ) {
+		const syncDuration = () => {
+			durationOutput.textContent = `${ durationInput.value }h`;
+		};
+		syncDuration();
+		durationInput.addEventListener( 'input', syncDuration );
+	}
+
+	chips.forEach( ( input ) => {
+		input.addEventListener( 'change', () => {
+			input
+				.closest( '.batp-itinerary-chip' )
+				.classList.toggle( 'is-selected', input.checked );
+		} );
+	} );
+
+	form.addEventListener( 'submit', ( event ) => {
+		event.preventDefault();
+		const formData = new FormData( form );
+		const payload = {
+			neighborhood: formData.get( 'neighborhood' ),
+			interests: formData.getAll( 'interests[]' ),
+			duration: Number( formData.get( 'duration' ) ),
+		};
+		form.dataset.state = 'loading';
+		form.dispatchEvent(
+			new CustomEvent( 'batp-itinerary-request', { detail: payload } )
+		);
+		setTimeout( () => {
+			form.dataset.state = 'idle';
+		}, 800 );
+	} );
+};
+
+if ( document.readyState !== 'loading' ) {
+	initItineraryForm();
+} else {
+	document.addEventListener( 'DOMContentLoaded', initItineraryForm );
+}

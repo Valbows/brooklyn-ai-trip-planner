@@ -1,15 +1,38 @@
 {
 	"$schema": "https://schemas.wp.org/trunk/block.json",
 	"apiVersion": 3,
-	"name": "create-block/brooklyn-ai-planner",
-	"version": "0.1.0",
-	"title": "Brooklyn Ai Planner",
+	"name": "brooklyn-ai/itinerary-request",
+	"version": "0.2.0",
+	"title": "Brooklyn AI Itinerary Request",
 	"category": "widgets",
-	"icon": "smiley",
-	"description": "Example block scaffolded with Create Block tool.",
-	"example": {},
+	"icon": "admin-site-alt3",
+	"description": "Collect preferred vibes, dates, and party size for the Brooklyn AI trip planner.",
+	"keywords": [
+		"brooklyn",
+		"ai",
+		"travel"
+	],
 	"supports": {
-		"html": false
+		"html": false,
+		"align": ["wide", "full"]
+	},
+	"attributes": {
+		"heading": {
+			"type": "string",
+			"default": "Plan your perfect Brooklyn day"
+		},
+		"subheading": {
+			"type": "string",
+			"default": "Tell us what you love and we will craft a Gemini-powered itinerary."
+		},
+		"ctaLabel": {
+			"type": "string",
+			"default": "Generate itinerary"
+		},
+		"highlightColor": {
+			"type": "string",
+			"default": "#ff4f5e"
+		}
 	},
 	"textdomain": "brooklyn-ai-planner",
 	"editorScript": "file:./index.js",

@@ -24,7 +24,12 @@ class Autoloader {
 	 * Registers the autoloader with SPL.
 	 */
 	public static function register(): void {
-		spl_autoload_register( array( __CLASS__, 'autoload' ) );
+		spl_autoload_register(
+			array(
+				new self(),
+				'autoload',
+			)
+		);
 	}
 
 	/**
