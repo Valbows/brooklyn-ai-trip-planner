@@ -15,6 +15,7 @@ use BrooklynAI\Clients\Pinecone_Client;
 use BrooklynAI\Clients\Supabase_Client;
 use BrooklynAI\Ingestion\Venue_Enrichment_Service;
 use BrooklynAI\Ingestion\Venue_Ingestion_Manager;
+use BrooklynAI\MBA\MBA_Generator;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
@@ -83,6 +84,7 @@ class Plugin {
 	private function register_hooks(): void {
 		add_action( 'init', array( $this, 'register_blocks' ) );
 		add_action( 'rest_api_init', array( $this->rest_controller, 'register_routes' ) );
+		add_action( 'batp_daily_mba_refresh', array( $this, 'run_scheduled_mba' ) );
 		$this->settings_page->register();
 	}
 
@@ -97,6 +99,10 @@ class Plugin {
 			'batp ingest'      => array(
 				'file'  => BATP_PLUGIN_PATH . 'includes/cli/class-batp-ingest-command.php',
 				'class' => '\\BrooklynAI\\CLI\\Batp_Ingest_Command',
+			),
+			'batp generate-rules' => array(
+				'file'  => BATP_PLUGIN_PATH . 'includes/cli/class-batp-mba-command.php',
+				'class' => '\\BrooklynAI\\CLI\\Batp_Mba_Command',
 			),
 			'batp diagnostics' => array(
 				'file'  => BATP_PLUGIN_PATH . 'includes/cli/class-batp-diagnostics-command.php',
@@ -230,5 +236,9 @@ class Plugin {
 			new Venue_Enrichment_Service( $this->gemini() ?? new Gemini_Client( 'dry-run-placeholder' ) ),
 			$this->analytics()
 		);
+	}
+
+	public function mba_generator(): MBA_Generator {
+		return new MBA_Generator( $this->supabase() );
 	}
 }
