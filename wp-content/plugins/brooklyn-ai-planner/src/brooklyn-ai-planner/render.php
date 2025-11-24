@@ -32,9 +32,19 @@ $interests = array(
 	'family'    => __( 'Family-friendly', 'brooklyn-ai-planner' ),
 );
 
+$accessibility_options = array(
+	'wheelchair' => __( 'Wheelchair accessible', 'brooklyn-ai-planner' ),
+	'sensory'    => __( 'Sensory-friendly', 'brooklyn-ai-planner' ),
+	'seating'    => __( 'Ample seating', 'brooklyn-ai-planner' ),
+);
+
+$nonce   = wp_create_nonce( 'batp_generate_itinerary' );
+$api_url = rest_url( 'brooklyn-ai/v1/itinerary' );
+$maps_key = \BrooklynAI\Plugin::instance()->get_maps_api_key();
+
 $wrapper_attrs = get_block_wrapper_attributes( array(
 	'class' => 'batp-itinerary-block',
-	'style' => sprintf( 'border-color: %1$s; --batp-highlight-color: %1$s;', esc_attr( $highlight_color ) ),
+	'style' => sprintf( '--batp-highlight-color: %1$s;', esc_attr( $highlight_color ) ),
 ) );
 ?>
 
@@ -44,11 +54,26 @@ $wrapper_attrs = get_block_wrapper_attributes( array(
 		<p class="batp-itinerary-block__subheading"><?php echo esc_html( $subheading ); ?></p>
 	</header>
 	<div class="batp-itinerary-layout">
-		<form class="batp-itinerary-form" data-batp-itinerary-form data-state="idle">
+		<form 
+			class="batp-itinerary-form" 
+			data-batp-itinerary-form 
+			data-state="idle" 
+			data-nonce="<?php echo esc_attr( $nonce ); ?>" 
+			data-api-url="<?php echo esc_url( $api_url ); ?>"
+			data-google-maps-key="<?php echo esc_attr( $maps_key ); ?>"
+		>
 			<label class="batp-itinerary-form__field">
 				<span class="batp-itinerary-form__label"><?php esc_html_e( 'Neighborhood or starting point', 'brooklyn-ai-planner' ); ?></span>
-				<input type="text" name="neighborhood" placeholder="e.g., Williamsburg" required />
+				<div style="display: flex; gap: 0.5rem;">
+					<input type="text" name="neighborhood" placeholder="e.g., Williamsburg" required style="flex:1;" />
+					<button type="button" data-batp-geo-trigger title="<?php esc_attr_e( 'Use my location', 'brooklyn-ai-planner' ); ?>" style="padding: 0 1rem; border: 1px solid #E0DCD5; border-radius: 12px; background: #fff; cursor: pointer;">
+						<span class="dashicons dashicons-location" style="color: var(--batp-highlight-color);"></span>
+					</button>
+				</div>
+				<input type="hidden" name="latitude" />
+				<input type="hidden" name="longitude" />
 			</label>
+			
 			<div class="batp-itinerary-form__field">
 				<span class="batp-itinerary-form__label"><?php esc_html_e( 'What vibes are you craving?', 'brooklyn-ai-planner' ); ?></span>
 				<div class="batp-itinerary-chips">
@@ -60,11 +85,40 @@ $wrapper_attrs = get_block_wrapper_attributes( array(
 					<?php endforeach; ?>
 				</div>
 			</div>
-			<label class="batp-itinerary-form__field">
-				<span class="batp-itinerary-form__label"><?php esc_html_e( 'Hours to explore', 'brooklyn-ai-planner' ); ?></span>
-				<input type="range" name="duration" min="2" max="8" step="1" value="4" data-batp-duration />
-				<span class="batp-itinerary-form__range-value" data-batp-duration-output>4h</span>
-			</label>
+
+			<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+				<label class="batp-itinerary-form__field">
+					<span class="batp-itinerary-form__label"><?php esc_html_e( 'Budget', 'brooklyn-ai-planner' ); ?></span>
+					<select name="budget" style="width: 100%; padding: 0.85rem; border: 1px solid #E0DCD5; border-radius: 12px; background: #fff;">
+						<option value="low"><?php esc_html_e( '$ - Budget friendly', 'brooklyn-ai-planner' ); ?></option>
+						<option value="medium" selected><?php esc_html_e( '$$ - Moderate', 'brooklyn-ai-planner' ); ?></option>
+						<option value="high"><?php esc_html_e( '$$$ - Treat yourself', 'brooklyn-ai-planner' ); ?></option>
+					</select>
+				</label>
+
+				<label class="batp-itinerary-form__field">
+					<span class="batp-itinerary-form__label"><?php esc_html_e( 'Duration', 'brooklyn-ai-planner' ); ?></span>
+					<div style="display: flex; align-items: center; gap: 1rem;">
+						<input type="range" name="duration" min="2" max="8" step="1" value="4" data-batp-duration style="flex:1;" />
+						<span class="batp-itinerary-form__range-value" data-batp-duration-output>4h</span>
+					</div>
+				</label>
+			</div>
+
+			<div class="batp-itinerary-form__field">
+				<details style="border: 1px solid #E0DCD5; border-radius: 12px; padding: 0.5rem 1rem; background: #fff;">
+					<summary style="cursor: pointer; font-weight: 600; color: #555; font-size: 0.9rem;"><?php esc_html_e( 'Accessibility & preferences', 'brooklyn-ai-planner' ); ?></summary>
+					<div style="margin-top: 1rem; display: flex; flex-direction: column; gap: 0.5rem;">
+						<?php foreach ( $accessibility_options as $slug => $label ) : ?>
+						<label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem;">
+							<input type="checkbox" name="accessibility_preferences[]" value="<?php echo esc_attr( $slug ); ?>" />
+							<?php echo esc_html( $label ); ?>
+						</label>
+						<?php endforeach; ?>
+					</div>
+				</details>
+			</div>
+
 			<div class="batp-itinerary-form__footer">
 				<button type="submit" class="batp-itinerary-block__cta">
 					<?php echo esc_html( $cta ); ?>

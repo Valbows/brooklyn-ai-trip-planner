@@ -8,6 +8,7 @@
 namespace BrooklynAI;
 
 use BrooklynAI\Admin\Settings_Page;
+use BrooklynAI\API\REST_Controller;
 use BrooklynAI\Clients\Gemini_Client;
 use BrooklynAI\Clients\GoogleMaps_Client;
 use BrooklynAI\Clients\Pinecone_Client;
@@ -26,6 +27,7 @@ class Plugin {
 	private Cache_Service $cache;
 	private Analytics_Logger $analytics;
 	private Settings_Page $settings_page;
+	private REST_Controller $rest_controller;
 	private Supabase_Client $supabase;
 	private ?Pinecone_Client $pinecone = null;
 	private ?Gemini_Client $gemini     = null;
@@ -75,10 +77,12 @@ class Plugin {
 		$this->supabase      = $this->make_supabase_client();
 		$this->analytics     = new Analytics_Logger( $this->supabase );
 		$this->settings_page = new Settings_Page();
+		$this->rest_controller = new REST_Controller();
 	}
 
 	private function register_hooks(): void {
 		add_action( 'init', array( $this, 'register_blocks' ) );
+		add_action( 'rest_api_init', array( $this->rest_controller, 'register_routes' ) );
 		$this->settings_page->register();
 	}
 
@@ -155,13 +159,17 @@ class Plugin {
 
 	public function maps(): ?GoogleMaps_Client {
 		if ( null === $this->maps ) {
-			$api_key = $this->setting_with_env_fallback( 'maps_api_key', 'BATP_MAPS_API_KEY' );
+			$api_key = $this->get_maps_api_key();
 			if ( '' !== $api_key ) {
 				$this->maps = new GoogleMaps_Client( $api_key );
 			}
 		}
 
 		return $this->maps;
+	}
+
+	public function get_maps_api_key(): string {
+		return $this->setting_with_env_fallback( 'maps_api_key', 'BATP_MAPS_API_KEY' );
 	}
 
 	private function make_supabase_client(): Supabase_Client {
@@ -201,6 +209,18 @@ class Plugin {
 				register_block_type( BATP_PLUGIN_PATH . "build/{$block_type}" );
 			}
 		}
+	}
+
+	public function engine(): Engine {
+		return new Engine(
+			$this->security,
+			$this->cache,
+			$this->pinecone(),
+			$this->supabase,
+			$this->maps(),
+			$this->gemini(),
+			$this->analytics
+		);
 	}
 
 	public function ingestion_manager(): Venue_Ingestion_Manager {

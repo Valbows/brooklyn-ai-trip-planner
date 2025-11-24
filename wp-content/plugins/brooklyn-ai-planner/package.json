@@ -16,6 +16,7 @@
 		"start": "wp-scripts start --webpack-copy-php --blocks-manifest"
 	},
 	"devDependencies": {
+		"@googlemaps/js-api-loader": "^2.0.2",
 		"@playwright/test": "^1.56.1",
 		"@types/node": "^24.10.1",
 		"@wordpress/scripts": "^31.0.0"

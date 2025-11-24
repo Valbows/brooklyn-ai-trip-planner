@@ -72,18 +72,6 @@ if ( ! function_exists( '__' ) ) {
 	}
 }
 
-if ( ! function_exists( 'wp_create_nonce' ) ) {
-	function wp_create_nonce( $action ) {
-		return hash_hmac( 'sha256', (string) $action, 'nonce-secret' );
-	}
-}
-
-if ( ! function_exists( 'wp_verify_nonce' ) ) {
-	function wp_verify_nonce( $nonce, $action ) {
-		return hash_equals( wp_create_nonce( $action ), $nonce );
-	}
-}
-
 if ( ! function_exists( 'sanitize_text_field' ) ) {
 	function sanitize_text_field( $str ) {
 		return is_scalar( $str ) ? filter_var( $str, FILTER_UNSAFE_RAW, FILTER_FLAG_STRIP_LOW | FILTER_FLAG_STRIP_HIGH ) : '';
@@ -97,11 +85,13 @@ if ( ! function_exists( 'sanitize_key' ) ) {
 	}
 }
 
+/*
 if ( ! function_exists( 'wp_json_encode' ) ) {
 	function wp_json_encode( $data ) {
 		return json_encode( $data );
 	}
 }
+*/
 
 if ( ! function_exists( 'map_deep' ) ) {
 	function map_deep( $value, $callback ) {
@@ -160,6 +150,19 @@ if ( ! class_exists( 'WP_Error' ) ) {
 }
 
 echo "Starting Monkey setup\n";
+if ( function_exists( 'wp_verify_nonce' ) ) {
+	echo "wp_verify_nonce ALREADY EXISTS\n";
+} else {
+	echo "wp_verify_nonce DOES NOT EXIST\n";
+}
+Monkey\setUp();
+echo "Monkey setup complete\n";
+register_shutdown_function(
+	static function () {
+		Monkey\tearDown();
+	}
+);
+
 if ( ! function_exists( 'sanitize_title' ) ) {
 	function sanitize_title( $title, $fallback_title = '', $context = 'save' ) {
 		return strtolower( preg_replace( '/[^a-z0-9-]/', '-', $title ) );
@@ -193,6 +196,18 @@ if ( ! function_exists( 'wp_kses_post' ) ) {
 if ( ! function_exists( 'wp_mkdir_p' ) ) {
 	function wp_mkdir_p( $target ) {
 		return mkdir( $target, 0755, true );
+	}
+}
+
+if ( ! function_exists( 'wp_remote_retrieve_response_code' ) ) {
+	function wp_remote_retrieve_response_code( $response ) {
+		return isset( $response['response']['code'] ) ? (int) $response['response']['code'] : 0;
+	}
+}
+
+if ( ! function_exists( 'wp_remote_retrieve_body' ) ) {
+	function wp_remote_retrieve_body( $response ) {
+		return isset( $response['body'] ) ? $response['body'] : '';
 	}
 }
 

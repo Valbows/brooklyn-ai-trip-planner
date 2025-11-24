@@ -8,7 +8,7 @@ export default defineConfig( {
 	workers: process.env.CI ? 1 : undefined,
 	reporter: 'html',
 	use: {
-		baseURL: 'http://localhost:8888', // Assuming WordPress Studio default or standard local
+		baseURL: 'http://localhost:8881', // Updated to port 8881 based on active Studio process
 		trace: 'on-first-retry',
 	},
 	projects: [

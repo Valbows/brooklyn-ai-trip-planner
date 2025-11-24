@@ -23,6 +23,47 @@ class Supabase_Client {
 	}
 
 	/**
+	 * Select rows where the provided column matches any value in the list.
+	 *
+	 * @param array<int, string|int|float> $values
+	 * @param array<string, mixed>         $options
+	 * @return array<int, array<string, mixed>>|WP_Error
+	 */
+	public function select_in( string $table, string $column, array $values, array $options = array() ) {
+		$column = sanitize_key( $column );
+		if ( '' === $column ) {
+			return new WP_Error( 'batp_supabase_invalid_column', __( 'Supabase select_in requires a valid column name.', 'brooklyn-ai-planner' ) );
+		}
+
+		$filtered_values = $this->sanitize_filter_values( $values );
+		if ( empty( $filtered_values ) ) {
+			return new WP_Error( 'batp_supabase_empty_filter', __( 'Supabase select_in requires at least one value.', 'brooklyn-ai-planner' ) );
+		}
+
+		$select = isset( $options['select'] ) && is_string( $options['select'] ) ? $options['select'] : '*';
+		$limit  = isset( $options['limit'] ) && is_numeric( $options['limit'] ) ? (int) $options['limit'] : null;
+		$order  = isset( $options['order'] ) && is_string( $options['order'] ) ? $options['order'] : null;
+
+		$query_args = array(
+			'select' => $select,
+			$column  => sprintf( 'in.(%s)', $this->format_in_values( $filtered_values ) ),
+		);
+
+		if ( null !== $limit ) {
+			$query_args['limit'] = $limit;
+		}
+
+		if ( null !== $order ) {
+			$query_args['order'] = $order;
+		}
+
+		$query = http_build_query( $query_args, '', '&', PHP_QUERY_RFC3986 );
+		$path  = sprintf( '/rest/v1/%s?%s', urlencode( $table ), $query );
+
+		return $this->request( 'GET', $path, array() );
+	}
+
+	/**
 	 * Inserts row into table using Supabase REST API.
 	 *
 	 * @param array<string, mixed> $payload Payload to insert.
@@ -86,6 +127,39 @@ class Supabase_Client {
 		}
 
 		return array( $payload );
+	}
+
+	/**
+	 * @param array<int, string|int|float> $values
+	 * @return array<int, string>
+	 */
+	private function sanitize_filter_values( array $values ): array {
+		$clean = array();
+
+		foreach ( $values as $value ) {
+			if ( is_scalar( $value ) ) {
+				$normalized = sanitize_text_field( (string) $value );
+				if ( '' !== $normalized ) {
+					$clean[] = $normalized;
+				}
+			}
+		}
+
+		return array_values( array_unique( $clean ) );
+	}
+
+	/**
+	 * @param array<int, string> $values
+	 */
+	private function format_in_values( array $values ): string {
+		$wrapped = array_map(
+			static function ( string $value ): string {
+				return sprintf( '"%s"', str_replace( '"', '\\"', $value ) );
+			},
+			$values
+		);
+
+		return implode( ',', $wrapped );
 	}
 
 	/**
