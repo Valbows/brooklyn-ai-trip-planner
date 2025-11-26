@@ -208,6 +208,29 @@ wp-content/plugins/brooklyn-ai-planner/
 - [x] **Runbook**
   - [x] Document process for regenerating synthetic data, verifying cron completion, and troubleshooting Supabase errors; store in `/docs/runbook-mba.md`.
 
+### Phase 6.5 – Analytics, Reporting & Refinement
+- [x] **Advanced Analytics Tracking**
+  - [x] Create `POST /brooklyn-ai/v1/events` endpoint to capture frontend user interactions.
+  - [x] Update `view.js` to track and send events for:
+    - [x] Website URL clicks (outbound).
+    - [x] Phone number clicks (intent to call).
+    - [x] Directions clicks.
+  - [x] Extend `Analytics_Logger` to store these events in `analytics_logs` with metadata (venue_id, timestamp).
+- [ ] **Reporting Dashboard**
+  - [ ] Create `BrooklynAI\Admin\Reports_Page` and register submenu "BATP Reports".
+  - [ ] Implement SQL aggregations to show:
+    - [ ] Total Itineraries Generated (This Month).
+    - [ ] Total Click-throughs (Website/Phone).
+  - [ ] **Export Features:**
+    - [ ] "Email Report": Send an HTML summary of the current month's stats to the admin email.
+    - [ ] "Download PDF": Generate a PDF snapshot of the report (using a lightweight library or print stylesheet).
+- [ ] **UI Refinement**
+  - [ ] Update `style.scss`: Change "Plan Your Perfect Day" banner background to `#1649FF` (Blue) with a subtle gradient overlay as requested.
+- [ ] **Pinecone/Infrastructure Fix**
+  - [ ] **Diagnosis:** Investigate the root cause of SSL/TLS connection failures (currently bypassed via `sslverify => false`).
+  - [ ] **Resolution:** Implement a permanent fix (e.g., bundling CA certificates or updating environment config) to ensure secure, verified connections.
+  - [ ] **Validation:** Verify vector search reliability and remove temporary patches.
+
 ### Phase 7 – QA, Hardening, & Release
 - [ ] **Automated quality gates**
   - [x] Run PHPCS (WordPress-Core + Extra + Docs), PHPStan level 8, PHPUnit suite, Jest, and Playwright locally + in GitHub Actions.

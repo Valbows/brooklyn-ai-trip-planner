@@ -4,6 +4,7 @@
  */
 
 @use "sass:color";
+/* stylelint-disable no-descending-specificity */
 @import url(https://fonts.googleapis.com/css2?family=Archivo:ital,wght@0,400;0,700;1,400&family=Oswald:wght@400;600&display=swap);
 
 // Variables
@@ -376,10 +377,21 @@ $shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.
 		font-size: 0.9rem;
 		color: #718096;
 
-		div {
+		div,
+		a {
 			display: flex;
 			align-items: center;
 			gap: 0.5rem;
+		}
+
+		a {
+			text-decoration: none;
+			color: inherit;
+
+			&:hover {
+				text-decoration: underline;
+				color: $color-primary-blue;
+			}
 		}
 	}
 

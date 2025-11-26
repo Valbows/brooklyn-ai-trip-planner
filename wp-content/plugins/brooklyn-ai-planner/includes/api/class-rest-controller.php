@@ -49,6 +49,71 @@ class REST_Controller extends WP_REST_Controller {
 				),
 			)
 		);
+
+		register_rest_route(
+			$this->namespace,
+			'/events',
+			array(
+				array(
+					'methods'             => WP_REST_Server::CREATABLE,
+					'callback'            => array( $this, 'track_event' ),
+					'permission_callback' => array( $this, 'create_item_permissions_check' ),
+					'args'                => array(
+						'action_type' => array(
+							'required'          => true,
+							'type'              => 'string',
+							'validate_callback' => function ( $param ) {
+								return in_array( $param, array( 'website_click', 'phone_click', 'directions_click' ), true );
+							},
+						),
+						'venue_id'    => array(
+							'required' => false,
+							'type'     => 'string',
+						),
+						'metadata'    => array(
+							'required' => false,
+							'type'     => 'object',
+						),
+						'nonce'       => array(
+							'required' => true,
+							'type'     => 'string',
+						),
+					),
+				),
+			)
+		);
+	}
+
+	/**
+	 * Track user interaction event.
+	 *
+	 * @param WP_REST_Request $request
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public function track_event( $request ) {
+		$params = $request->get_json_params();
+		$nonce  = $params['nonce'];
+
+		// Reuse the itinerary nonce for now as it proves the user is on the page
+		if ( ! wp_verify_nonce( $nonce, 'batp_generate_itinerary' ) ) {
+			return new WP_Error( 'batp_invalid_nonce', 'Security check failed.', array( 'status' => 403 ) );
+		}
+
+		$logger = Plugin::instance()->analytics();
+		$result = $logger->log(
+			$params['action_type'],
+			array(
+				'venue_id' => $params['venue_id'] ?? null,
+				'metadata' => $params['metadata'] ?? array(),
+			)
+		);
+
+		if ( is_wp_error( $result ) ) {
+			// Log error but don't fail the request to client (fire and forget from client perspective)
+			error_log( 'BATP Analytics Error: ' . $result->get_error_message() );
+		}
+
+		return rest_ensure_response( array( 'success' => true ) );
 	}
 
 	/**

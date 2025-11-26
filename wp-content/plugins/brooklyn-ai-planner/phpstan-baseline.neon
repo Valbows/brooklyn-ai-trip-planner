@@ -31,6 +31,11 @@ parameters:
 			path: includes/api/class-rest-controller.php
 
 		-
+			message: "#^Method BrooklynAI\\\\API\\\\REST_Controller\\:\\:track_event\\(\\) has parameter \\$request with generic class WP_REST_Request but does not specify its types\\: T$#"
+			count: 1
+			path: includes/api/class-rest-controller.php
+
+		-
 			message: "#^Method BrooklynAI\\\\Clients\\\\Pinecone_Client\\:\\:query\\(\\) invoked with 3 parameters, 2 required\\.$#"
 			count: 1
 			path: includes/class-engine.php

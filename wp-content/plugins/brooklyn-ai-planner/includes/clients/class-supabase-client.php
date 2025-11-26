@@ -221,14 +221,14 @@ class Supabase_Client {
 	/**
 	 * Calls a Postgres function via RPC.
 	 *
-	 * @param string               $function Function name.
-	 * @param array<string, mixed> $params   Function arguments.
+	 * @param string               $function_name Function name.
+	 * @param array<string, mixed> $params        Function arguments.
 	 * @return array<mixed>|WP_Error
 	 */
-	public function rpc( string $function, array $params = array() ) {
+	public function rpc( string $function_name, array $params = array() ) {
 		return $this->request(
 			'POST',
-			'/rest/v1/rpc/' . urlencode( $function ),
+			'/rest/v1/rpc/' . urlencode( $function_name ),
 			array(
 				'body' => wp_json_encode( $params ),
 			)

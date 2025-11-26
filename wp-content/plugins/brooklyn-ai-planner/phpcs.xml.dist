@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<ruleset name="Brooklyn AI Planner">
+	<description>Custom ruleset for Brooklyn AI Planner.</description>
+
+	<!-- Use WordPress Core ruleset -->
+	<rule ref="WordPress-Core" />
+
+	<!-- Exclude tests from strict filename rules -->
+	<rule ref="WordPress.Files.FileName">
+		<exclude-pattern>tests/*</exclude-pattern>
+	</rule>
+
+	<!-- Exclude tests from strict class naming rules (class-*.php requirement) -->
+	<rule ref="WordPress.Files.FileName.InvalidClassFileName">
+		<exclude-pattern>tests/*</exclude-pattern>
+	</rule>
+
+	<!-- Check these directories -->
+	<file>brooklyn-ai-planner.php</file>
+	<file>includes</file>
+	<file>admin</file>
+	<file>tests</file>
+</ruleset>

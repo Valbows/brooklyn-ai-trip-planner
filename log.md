@@ -110,6 +110,15 @@
   - Fixed PHPCS errors across codebase using `phpcbf`.
   - Verified `npm test` passes (Lint + Unit Tests) with 100% green on `phpunit`.
 
+## 2025-11-25 (Phase 6.5 Analytics)
+- **Advanced Analytics Tracking:**
+  - **Backend:** Created `POST /brooklyn-ai/v1/events` endpoint in `REST_Controller` to capture frontend interactions.
+  - **Frontend:** Updated `view.js` with `trackEvent` logic and event delegation to capture clicks on Website, Phone, and Directions buttons.
+  - **Integration:** Wired up `Analytics_Logger` to store events in `analytics_logs` table.
+  - **UI:** Improved phone number display in cards to be clickable `tel:` links.
+  - **QA:** Verified build passes all linting and tests.
+
+
 
 
 

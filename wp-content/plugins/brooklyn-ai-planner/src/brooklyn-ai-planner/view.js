@@ -319,19 +319,30 @@ const initItineraryForm = () => {
 						<div><span class="dashicons dashicons-clock"></span> ${ hours }</div>
 						${
 							phone
-								? `<div><span class="dashicons dashicons-phone"></span> ${ phone }</div>`
+								? `<a href="tel:${ phone.replace(
+										/[^0-9+]/g,
+										''
+								  ) }" class="batp-card__link-row" data-event-action="phone_click" data-venue-id="${
+										details.id
+								  }"><span class="dashicons dashicons-phone"></span> ${ phone }</a>`
 								: ''
 						}
 					</div>
 
 					<div class="batp-card__footer">
-						<a href="${ dirUrl }" target="_blank" class="batp-card__btn-directions">
+						<a href="${ dirUrl }" target="_blank" class="batp-card__btn-directions" data-event-action="directions_click" data-venue-id="${
+							details.id
+						}">
 							<span class="dashicons dashicons-location-alt"></span> Directions
 						</a>
 						<div class="batp-card__links">
 							${
 								website !== '#'
-									? `<a href="${ website }" target="_blank"><span class="dashicons dashicons-admin-site"></span> Website</a>`
+									? `<a href="${ website }" target="_blank" data-event-action="website_click" data-venue-id="${
+											details.id
+									  }" data-event-meta='${ JSON.stringify( {
+											url: website,
+									  } ) }'><span class="dashicons dashicons-admin-site"></span> Website</a>`
 									: ''
 							}
 						</div>
@@ -472,6 +483,50 @@ const initItineraryForm = () => {
 			}, 100 );
 		}
 	};
+
+	// 5. Analytics Logic
+	const trackEvent = async ( action, venueId, metadata = {} ) => {
+		const nonce = form.dataset.nonce;
+		const baseApiUrl = form.dataset.apiUrl; // .../v1/itinerary
+		const eventsUrl = baseApiUrl.replace( '/itinerary', '/events' );
+
+		if ( ! nonce || ! eventsUrl ) {
+			return;
+		}
+
+		try {
+			await fetch( eventsUrl, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify( {
+					action_type: action,
+					venue_id: venueId,
+					metadata,
+					nonce,
+				} ),
+			} );
+		} catch ( err ) {
+			// Silent fail
+			console.warn( 'Analytics fail', err );
+		}
+	};
+
+	// Event Delegation
+	if ( listOutput ) {
+		listOutput.addEventListener( 'click', ( e ) => {
+			const target = e.target.closest( '[data-event-action]' );
+			if ( target ) {
+				const action = target.dataset.eventAction;
+				const venueId = target.dataset.venueId;
+				const meta = target.dataset.eventMeta
+					? JSON.parse( target.dataset.eventMeta )
+					: {};
+				trackEvent( action, venueId, meta );
+			}
+		} );
+	}
 
 	// 4. Form Submission
 	form.addEventListener( 'submit', async ( event ) => {
