@@ -216,20 +216,20 @@ wp-content/plugins/brooklyn-ai-planner/
     - [x] Phone number clicks (intent to call).
     - [x] Directions clicks.
   - [x] Extend `Analytics_Logger` to store these events in `analytics_logs` with metadata (venue_id, timestamp).
-- [ ] **Reporting Dashboard**
-  - [ ] Create `BrooklynAI\Admin\Reports_Page` and register submenu "BATP Reports".
-  - [ ] Implement SQL aggregations to show:
-    - [ ] Total Itineraries Generated (This Month).
-    - [ ] Total Click-throughs (Website/Phone).
-  - [ ] **Export Features:**
-    - [ ] "Email Report": Send an HTML summary of the current month's stats to the admin email.
-    - [ ] "Download PDF": Generate a PDF snapshot of the report (using a lightweight library or print stylesheet).
-- [ ] **UI Refinement**
-  - [ ] Update `style.scss`: Change "Plan Your Perfect Day" banner background to `#1649FF` (Blue) with a subtle gradient overlay as requested.
-- [ ] **Pinecone/Infrastructure Fix**
-  - [ ] **Diagnosis:** Investigate the root cause of SSL/TLS connection failures (currently bypassed via `sslverify => false`).
-  - [ ] **Resolution:** Implement a permanent fix (e.g., bundling CA certificates or updating environment config) to ensure secure, verified connections.
-  - [ ] **Validation:** Verify vector search reliability and remove temporary patches.
+- [x] **Reporting Dashboard**
+  - [x] Create `BrooklynAI\Admin\Reports_Page` and register submenu "BATP Reports".
+  - [x] Implement SQL aggregations to show:
+    - [x] Total Itineraries Generated (This Month).
+    - [x] Total Click-throughs (Website/Phone).
+  - [x] **Export Features:**
+    - [x] "Email Report": Send an HTML summary of the current month's stats to the admin email.
+    - [x] "Download PDF": Generate a PDF snapshot of the report (using a lightweight library or print stylesheet).
+- [x] **UI Refinement**
+  - [x] Update `style.scss`: Change "Plan Your Perfect Day" banner background to `#1649FF` (Blue) with a subtle gradient overlay as requested.
+- [x] **Pinecone/Infrastructure Fix**
+  - [x] **Diagnosis:** Investigate the root cause of SSL/TLS connection failures (currently bypassed via `sslverify => false`).
+  - [x] **Resolution:** Implement a permanent fix (e.g., bundling CA certificates or updating environment config) to ensure secure, verified connections.
+  - [x] **Validation:** Verify vector search reliability and remove temporary patches.
 
 ### Phase 7 – QA, Hardening, & Release
 - [ ] **Automated quality gates**

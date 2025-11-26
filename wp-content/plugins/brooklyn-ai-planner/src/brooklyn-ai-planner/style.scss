@@ -34,9 +34,9 @@ $shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.
 	margin-bottom: 2rem;
 
 	&__header {
-		background: linear-gradient(90deg, $color-primary-orange 0%, #fff 50%, $color-primary-blue 100%);
+		background: linear-gradient(90deg, $color-primary-blue 0%, #888 100%);
 		padding: 2rem 2.5rem;
-		color: $color-text-dark; // Text needs to be dark on white center, or we adjust text color
+		color: #fff;
 	}
 
 	&__title {
@@ -45,7 +45,7 @@ $shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.
 		font-weight: 700;
 		margin: 0 0 0.5rem 0;
 		line-height: 1.2;
-		color: $color-text-dark;
+		color: #fff;
 		text-transform: uppercase;
 	}
 
@@ -54,7 +54,7 @@ $shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.
 		opacity: 0.9;
 		margin: 0;
 		font-weight: 400;
-		color: $color-text-dark;
+		color: #fff;
 	}
 
 	&__body {

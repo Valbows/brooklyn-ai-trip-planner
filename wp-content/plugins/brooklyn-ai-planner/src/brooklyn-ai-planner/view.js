@@ -487,6 +487,7 @@ const initItineraryForm = () => {
 	// 5. Analytics Logic
 	const trackEvent = async ( action, venueId, metadata = {} ) => {
 		const nonce = form.dataset.nonce;
+		const restNonce = form.dataset.restNonce;
 		const baseApiUrl = form.dataset.apiUrl; // .../v1/itinerary
 		const eventsUrl = baseApiUrl.replace( '/itinerary', '/events' );
 
@@ -494,16 +495,22 @@ const initItineraryForm = () => {
 			return;
 		}
 
+		// Default metadata to avoid empty object issues
+		const finalMeta = { ...metadata, source: 'web_client' };
+
 		try {
+			// console.log( 'BATP Analytics:', action, venueId, finalMeta );
 			await fetch( eventsUrl, {
 				method: 'POST',
+				keepalive: true,
 				headers: {
 					'Content-Type': 'application/json',
+					...( restNonce ? { 'X-WP-Nonce': restNonce } : {} ),
 				},
 				body: JSON.stringify( {
 					action_type: action,
 					venue_id: venueId,
-					metadata,
+					metadata: finalMeta,
 					nonce,
 				} ),
 			} );
@@ -523,6 +530,10 @@ const initItineraryForm = () => {
 				const meta = target.dataset.eventMeta
 					? JSON.parse( target.dataset.eventMeta )
 					: {};
+
+				// DEBUG: Verify click
+				// alert( 'Tracking: ' + action );
+
 				trackEvent( action, venueId, meta );
 			}
 		} );

@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class Settings_Page {
 	private const OPTION_KEY = 'batp_settings';
-	private const PAGE_SLUG  = 'batp-settings';
+	private const PAGE_SLUG  = 'brooklyn-ai-planner';
 
 	/**
 	 * @var array<int, array<string, string>>
@@ -30,15 +30,26 @@ class Settings_Page {
 	}
 
 	public function add_menu(): void {
-		add_options_page(
-			__( 'Brooklyn AI Planner', 'brooklyn-ai-planner' ),
-			__( 'Brooklyn AI Planner', 'brooklyn-ai-planner' ),
+		add_menu_page(
+			__( 'Brooklyn AI', 'brooklyn-ai-planner' ),
+			__( 'Brooklyn AI', 'brooklyn-ai-planner' ),
 			'manage_options',
-			self::PAGE_SLUG,
+			'brooklyn-ai-planner',
+			array( $this, 'render_page' ),
+			'dashicons-location',
+			50
+		);
+
+		add_submenu_page(
+			'brooklyn-ai-planner',
+			__( 'Settings', 'brooklyn-ai-planner' ),
+			__( 'Settings', 'brooklyn-ai-planner' ),
+			'manage_options',
+			'brooklyn-ai-planner',
 			array( $this, 'render_page' )
 		);
 
-		add_action( 'load-settings_page_' . self::PAGE_SLUG, array( $this, 'add_help_tab' ) );
+		add_action( 'load-toplevel_page_brooklyn-ai-planner', array( $this, 'add_help_tab' ) );
 	}
 
 	public function register_settings(): void {

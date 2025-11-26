@@ -30,6 +30,7 @@ class Batp_Diagnostics_Command extends WP_CLI_Command {
 
 		$results = array(
 			$this->check_supabase( $plugin->supabase() ),
+			$this->check_analytics( $plugin->supabase() ),
 			$this->check_pinecone( $plugin->pinecone() ),
 			$this->check_google( $plugin->maps() ),
 		);
@@ -42,6 +43,40 @@ class Batp_Diagnostics_Command extends WP_CLI_Command {
 		}
 
 		WP_CLI::success( 'All connectivity checks passed.' );
+	}
+
+	/**
+	 * @return array<string, string|int>
+	 */
+	private function check_analytics( Supabase_Client $client ): array {
+		$start = microtime( true );
+
+		// 1. Check RPC
+		$rpc = $client->rpc( 'get_analytics_stats' );
+		if ( is_wp_error( $rpc ) ) {
+			$msg = $rpc->get_error_message();
+			if ( strpos( $msg, 'function' ) !== false ) {
+				$msg = 'RPC missing. Run 060_analytics_reporting.sql';
+			}
+			return $this->format_result( 'Analytics', 'error', 0, $msg );
+		}
+
+		// 2. Check Insert
+		$insert = $client->insert(
+			'analytics_logs',
+			array(
+				'action_type'  => 'diagnostics_check',
+				'session_hash' => 'cli_test',
+				'metadata'     => wp_json_encode( array( 'source' => 'cli' ) ),
+			)
+		);
+		if ( is_wp_error( $insert ) ) {
+			return $this->format_result( 'Analytics', 'error', 0, 'Insert failed: ' . $insert->get_error_message() );
+		}
+
+		$latency = (int) round( ( microtime( true ) - $start ) * 1000 );
+
+		return $this->format_result( 'Analytics', 'ok', $latency, 'RPC active, Insert allowed.' );
 	}
 
 	/**

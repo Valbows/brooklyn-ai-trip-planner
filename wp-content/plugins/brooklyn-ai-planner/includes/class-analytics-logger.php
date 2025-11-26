@@ -26,11 +26,15 @@ class Analytics_Logger {
 	 * @return true|WP_Error
 	 */
 	public function log( string $action_type, array $context = array() ) {
-		$action   = sanitize_text_field( $action_type );
-		$seed     = isset( $context['session_hash'] ) ? $context['session_hash'] : '';
-		$session  = $this->hash_session( $seed );
-		$venue_id = isset( $context['venue_id'] ) ? sanitize_text_field( $context['venue_id'] ) : null;
-		$metadata = isset( $context['metadata'] ) ? wp_json_encode( $context['metadata'] ) : null;
+		$action  = sanitize_text_field( $action_type );
+		$seed    = isset( $context['session_hash'] ) ? $context['session_hash'] : '';
+		$session = $this->hash_session( $seed );
+
+		// Ensure venue_id is null if empty/missing (Supabase rejects empty string for UUID)
+		$raw_venue_id = isset( $context['venue_id'] ) ? $context['venue_id'] : null;
+		$venue_id     = ( null !== $raw_venue_id && '' !== $raw_venue_id ) ? sanitize_text_field( $raw_venue_id ) : null;
+
+		$metadata = isset( $context['metadata'] ) ? $context['metadata'] : null;
 
 		$payload = array(
 			'action_type'  => $action,

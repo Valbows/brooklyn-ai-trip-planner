@@ -26,7 +26,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 class Engine {
-	private const VENUE_SELECT_FIELDS = 'slug,name,borough,categories,latitude,longitude,budget,vibe_summary,is_sbrn_member,accessibility,website,phone,address,hours';
+	private const VENUE_SELECT_FIELDS = 'id,slug,name,borough,categories,latitude,longitude,budget,vibe_summary,is_sbrn_member,accessibility,website,phone,address,hours';
 	private const MBA_SELECT_FIELDS   = 'seed_slug,recommendation_slug,lift,confidence';
 	private const MBA_MAX_SEEDS       = 5;
 	private const MBA_MIN_LIFT        = 1.2;
@@ -1314,9 +1314,11 @@ class Engine {
 		$this->analytics->log(
 			'engine_error',
 			array(
-				'stage'   => $stage,
-				'message' => $error->get_error_message(),
-				'code'    => $error->get_error_code(),
+				'metadata' => array(
+					'stage'   => $stage,
+					'message' => $error->get_error_message(),
+					'code'    => $error->get_error_code(),
+				),
 			)
 		);
 	}
@@ -1324,7 +1326,9 @@ class Engine {
 	private function log_stage_success( string $stage, array $meta = array() ): void {
 		$this->analytics->log(
 			'engine_stage_complete',
-			array_merge( array( 'stage' => $stage ), $meta )
+			array(
+				'metadata' => array_merge( array( 'stage' => $stage ), $meta ),
+			)
 		);
 	}
 }

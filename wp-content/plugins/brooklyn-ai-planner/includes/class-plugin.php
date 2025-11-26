@@ -8,6 +8,7 @@
 namespace BrooklynAI;
 
 use BrooklynAI\Admin\Settings_Page;
+use BrooklynAI\Admin\Reports_Page;
 use BrooklynAI\API\REST_Controller;
 use BrooklynAI\Clients\Gemini_Client;
 use BrooklynAI\Clients\GoogleMaps_Client;
@@ -28,6 +29,7 @@ class Plugin {
 	private Cache_Service $cache;
 	private Analytics_Logger $analytics;
 	private Settings_Page $settings_page;
+	private Reports_Page $reports_page;
 	private REST_Controller $rest_controller;
 	private Supabase_Client $supabase;
 	private ?Pinecone_Client $pinecone = null;
@@ -82,6 +84,7 @@ class Plugin {
 		$this->supabase        = $this->make_supabase_client();
 		$this->analytics       = new Analytics_Logger( $this->supabase );
 		$this->settings_page   = new Settings_Page();
+		$this->reports_page    = new Reports_Page();
 		$this->rest_controller = new REST_Controller();
 	}
 
@@ -90,6 +93,7 @@ class Plugin {
 		add_action( 'rest_api_init', array( $this->rest_controller, 'register_routes' ) );
 		add_action( 'batp_daily_mba_refresh', array( $this, 'run_scheduled_mba' ) );
 		$this->settings_page->register();
+		$this->reports_page->register();
 	}
 
 	private function maybe_register_cli_commands(): void {
@@ -147,7 +151,7 @@ class Plugin {
 			$api_key    = $this->setting_with_env_fallback( 'pinecone_api_key', 'BATP_PINECONE_API_KEY' );
 			$project    = $this->setting_with_env_fallback( 'pinecone_project', 'BATP_PINECONE_PROJECT' );
 			$env        = $this->setting_with_env_fallback( 'pinecone_environment', 'BATP_PINECONE_ENVIRONMENT', 'us-east-1' );
-			$ssl_flag   = strtolower( $this->setting_with_env_fallback( 'pinecone_disable_ssl_verify', 'BATP_PINECONE_DISABLE_SSL_VERIFY', 'true' ) ); // Default to TRUE (disabled) for dev
+			$ssl_flag   = strtolower( $this->setting_with_env_fallback( 'pinecone_disable_ssl_verify', 'BATP_PINECONE_DISABLE_SSL_VERIFY', 'false' ) ); // Default to FALSE (enabled) now that we bundle certs
 			$verify_ssl = ! in_array( $ssl_flag, array( '1', 'true', 'yes' ), true );
 
 			if ( '' !== $api_key && '' !== $project ) {

@@ -90,10 +90,26 @@ class Pinecone_Client {
 			$args['body'] = wp_json_encode( $body );
 		}
 
+		// Inject custom CA cert if verification is enabled and cert exists
+		$cert_path = dirname( __DIR__, 2 ) . '/certs/cacert.pem';
+		$use_cert  = $this->verify_ssl && file_exists( $cert_path );
+
+		$hook = function ( $handle ) use ( $cert_path ) {
+			curl_setopt( $handle, CURLOPT_CAINFO, $cert_path );
+		};
+
+		if ( $use_cert ) {
+			add_action( 'http_api_curl', $hook );
+		}
+
 		$response = wp_remote_request(
 			$url,
 			array_merge( $args, array( 'method' => $method ) )
 		);
+
+		if ( $use_cert ) {
+			remove_action( 'http_api_curl', $hook );
+		}
 
 		return $this->handle_response( $response, $url, $method );
 	}

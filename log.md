@@ -117,6 +117,22 @@
   - **Integration:** Wired up `Analytics_Logger` to store events in `analytics_logs` table.
   - **UI:** Improved phone number display in cards to be clickable `tel:` links.
   - **QA:** Verified build passes all linting and tests.
+- **Reporting Dashboard:**
+  - Created `Reports_Page` admin page showing "Total Itineraries", "Website Clicks", "Phone Calls", and "Directions" stats.
+  - Implemented `get_analytics_stats` RPC logic (via `060_analytics_reporting.sql`).
+  - Added "Download PDF" (Print) and "Email Report" (mailto) buttons.
+- **UI Refinement:**
+  - Updated "Plan Your Perfect Day" banner background to `#1649FF` (Blue) with a gray gradient overlay.
+- **Fix:** Promoted "Brooklyn AI Planner" to a Top-Level Admin Menu (was previously under Settings) to support the new "Reports" submenu properly.
+- **Fix:** Corrected `Reports_Page` registration to use `admin_menu` hook, resolving malformed admin URLs.
+- **Fix:** Resolved double-encoding of analytics metadata in `Analytics_Logger`. Passed raw array to Supabase client to ensure `metadata` is stored as queryable JSONB, fixing empty report stats.
+- **Fix:** Updated `Engine.php` to correctly wrap stage metadata in a `metadata` key when calling `Analytics_Logger`, ensuring itinerary generation events are queryable.
+- **Infrastructure Fix:** Bundled `cacert.pem` and updated `Pinecone_Client` to inject it into `http_api_curl`, resolving SSL connection issues in restricted environments. Enabled SSL verification by default in `Plugin.php`.
+
+## 2025-01-21
+- **Fix:** Analytics click tracking (website/directions/phone) now works. Root cause: Empty string `venue_id` caused Supabase 400 error (`invalid input syntax for type uuid: ""`). Updated `Analytics_Logger` to convert empty string to `null` before insert.
+
+
 
 
 

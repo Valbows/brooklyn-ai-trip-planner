@@ -36,6 +36,6 @@
 	"scripts": {
 		"test": "vendor/bin/phpunit",
 		"lint:php": "php -d memory_limit=512M vendor/bin/phpcs",
-		"stan": "vendor/bin/phpstan --memory-limit=512M analyse"
+		"stan": "vendor/bin/phpstan --memory-limit=1G analyse"
 	}
 }
