@@ -18,12 +18,14 @@ class Pinecone_Client {
 	private string $project;
 	private string $environment;
 	private string $host;
+	private bool $verify_ssl;
 
-	public function __construct( string $api_key, string $project, string $environment, string $host = '' ) {
+	public function __construct( string $api_key, string $project, string $environment, string $host = '', bool $verify_ssl = true ) {
 		$this->api_key     = $api_key;
 		$this->project     = $project;
 		$this->environment = $environment;
 		$this->host        = $host ? $host : sprintf( 'https://controller.%s.pinecone.io', $environment );
+		$this->verify_ssl  = $verify_ssl;
 	}
 
 	/**
@@ -79,8 +81,9 @@ class Pinecone_Client {
 	 */
 	private function request( string $method, string $url, ?array $body = null ): array|WP_Error {
 		$args = array(
-			'headers' => $this->headers(),
-			'timeout' => 20,
+			'headers'   => $this->headers(),
+			'timeout'   => 20,
+			'sslverify' => $this->verify_ssl,
 		);
 
 		if ( null !== $body ) {

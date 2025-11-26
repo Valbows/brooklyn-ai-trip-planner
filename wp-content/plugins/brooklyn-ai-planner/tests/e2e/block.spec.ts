@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-test.skip( 'Block should insert and render in editor', async ( { page } ) => {
+test( 'Block should insert and render in editor', async ( { page } ) => {
 	// 1. Login
 	await page.goto( '/wp-login.php' );
 

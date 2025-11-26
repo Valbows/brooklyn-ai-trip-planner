@@ -23,6 +23,33 @@ class Supabase_Client {
 	}
 
 	/**
+	 * Select rows from a table with optional limit/order controls.
+	 *
+	 * @param array<string, mixed> $options
+	 * @return array<int, array<string, mixed>>|WP_Error
+	 */
+	public function select( string $table, array $options = array() ) {
+		$select = isset( $options['select'] ) && is_string( $options['select'] ) ? $options['select'] : '*';
+		$limit  = isset( $options['limit'] ) && is_numeric( $options['limit'] ) ? (int) $options['limit'] : null;
+		$order  = isset( $options['order'] ) && is_string( $options['order'] ) ? $options['order'] : null;
+
+		$query_args = array( 'select' => $select );
+
+		if ( null !== $limit ) {
+			$query_args['limit'] = $limit;
+		}
+
+		if ( null !== $order ) {
+			$query_args['order'] = $order;
+		}
+
+		$query = http_build_query( $query_args, '', '&', PHP_QUERY_RFC3986 );
+		$path  = sprintf( '/rest/v1/%s?%s', urlencode( $table ), $query );
+
+		return $this->request( 'GET', $path, array() );
+	}
+
+	/**
 	 * Select rows where the provided column matches any value in the list.
 	 *
 	 * @param array<int, string|int|float> $values
@@ -197,6 +224,8 @@ class Supabase_Client {
 		$args            = array_merge( $defaults, $args );
 		$args['headers'] = array_merge( $defaults['headers'], $args['headers'] ?? array() );
 
+		error_log( "BATP: Supabase Request $method $url" );
+
 		$response = wp_remote_request(
 			$url,
 			array(
@@ -204,12 +233,16 @@ class Supabase_Client {
 				'headers' => $args['headers'],
 				'timeout' => $args['timeout'],
 				'body'    => $args['body'] ?? null,
+				'sslverify' => false, // TEMP FIX: Disable SSL verify to rule out cert issues in dev
 			)
 		);
 
 		if ( is_wp_error( $response ) ) {
+			error_log( 'BATP: Supabase connection error: ' . $response->get_error_message() );
 			return $response;
 		}
+
+		error_log( 'BATP: Supabase Response Code: ' . wp_remote_retrieve_response_code( $response ) );
 
 		return $this->handle_response( $response, $path, $method );
 	}

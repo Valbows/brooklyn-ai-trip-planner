@@ -190,7 +190,7 @@ wp-content/plugins/brooklyn-ai-planner/
   - [x] Use `useReducer` for pipeline states; add context provider for child components.
   - [x] Handle error states (rate limit, API failure) with friendly messaging + retry buttons.
   - [x] Implement localization placeholders (`__()`) and ensure WCAG AA contrast + keyboard focus management.
-- [ ] **Testing**
+- [x] **Testing**
   - [x] Write Jest/RTL tests for reducer transitions, form validation, and component rendering.
   - [x] Configure Playwright E2E to load block inside Gutenberg iframe, submit sample request, and validate map + itinerary output.
 

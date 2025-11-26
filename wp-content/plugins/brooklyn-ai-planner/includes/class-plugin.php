@@ -143,9 +143,11 @@ class Plugin {
 			$api_key = $this->setting_with_env_fallback( 'pinecone_api_key', 'BATP_PINECONE_API_KEY' );
 			$project = $this->setting_with_env_fallback( 'pinecone_project', 'BATP_PINECONE_PROJECT' );
 			$env     = $this->setting_with_env_fallback( 'pinecone_environment', 'BATP_PINECONE_ENVIRONMENT', 'us-east-1' );
+			$ssl_flag = strtolower( $this->setting_with_env_fallback( 'pinecone_disable_ssl_verify', 'BATP_PINECONE_DISABLE_SSL_VERIFY', 'true' ) ); // Default to TRUE (disabled) for dev
+			$verify_ssl = ! in_array( $ssl_flag, array( '1', 'true', 'yes' ), true );
 
 			if ( '' !== $api_key && '' !== $project ) {
-				$this->pinecone = new Pinecone_Client( $api_key, $project, $env );
+				$this->pinecone = new Pinecone_Client( $api_key, $project, $env, '', $verify_ssl );
 			}
 		}
 
@@ -186,15 +188,21 @@ class Plugin {
 	}
 
 	private function get_setting( string $key, string $fallback = '' ): string {
-		$value = isset( $this->settings[ $key ] ) ? $this->settings[ $key ] : $fallback;
-		return is_string( $value ) ? $value : $fallback;
+		$value = isset( $this->settings[ $key ] ) ? $this->settings[ $key ] : '';
+		return ( is_string( $value ) && '' !== $value ) ? $value : $fallback;
 	}
 
 	private function setting_with_env_fallback( string $option_key, string $env_key, string $default_value = '' ): string {
 		$env_value = getenv( $env_key );
-		$fallback  = '' !== $default_value ? $default_value : ( $env_value ? $env_value : '' );
+		
+		// Priority 1: Environment Variable (Hard override)
+		if ( $env_value && '' !== trim( $env_value ) ) {
+			return trim( $env_value );
+		}
 
-		return trim( $this->get_setting( $option_key, $fallback ) );
+		// Priority 2: Database Setting
+		// Priority 3: Default Value (via fallback arg in get_setting)
+		return trim( $this->get_setting( $option_key, $default_value ) );
 	}
 
 	public function register_blocks(): void {

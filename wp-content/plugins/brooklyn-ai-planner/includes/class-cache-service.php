@@ -46,6 +46,7 @@ class Cache_Service {
 	 */
 	private function build_key( string $context, array $payload ): string {
 		$hash = md5( wp_json_encode( $payload ) );
-		return sprintf( 'batp_cache_%s_%s', sanitize_key( $context ), $hash );
+		// Updated prefix to 'batp_v2_' to invalidate previous cache (e.g. empty itineraries from before auth fix).
+		return sprintf( 'batp_v2_%s_%s', sanitize_key( $context ), $hash );
 	}
 }

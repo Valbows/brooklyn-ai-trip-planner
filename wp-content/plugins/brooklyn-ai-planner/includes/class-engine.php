@@ -26,7 +26,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 class Engine {
-	private const VENUE_SELECT_FIELDS   = 'slug,name,borough,categories,latitude,longitude,budget,vibe_summary,is_sbrn_member,accessibility';
+	private const VENUE_SELECT_FIELDS   = 'slug,name,borough,categories,latitude,longitude,budget,vibe_summary,is_sbrn_member,accessibility,website,phone,address,hours';
 	private const MBA_SELECT_FIELDS     = 'seed_slug,recommendation_slug,lift,confidence';
 	private const MBA_MAX_SEEDS         = 5;
 	private const MBA_MIN_LIFT          = 1.2;
@@ -41,6 +41,7 @@ class Engine {
 	private GoogleMaps_Client $maps;
 	private Gemini_Client $gemini;
 	private Analytics_Logger $analytics;
+	private bool $pinecone_available = true;
 	/** @var array<string, array<string, mixed>> */
 	private array $venue_cache = array();
 
@@ -70,11 +71,13 @@ class Engine {
 	 */
 	public function generate_itinerary( array $request ) {
 		$start_time = microtime( true );
+		error_log( 'BATP: Starting itinerary generation.' );
 
 		// Stage 0: Guardrails
 		$validated = $this->stage_guardrails( $request );
 		if ( is_wp_error( $validated ) ) {
 			$this->log_stage_error( 'guardrails', $validated );
+			error_log( 'BATP: Guardrails failed: ' . $validated->get_error_message() );
 			return $validated;
 		}
 
@@ -82,6 +85,7 @@ class Engine {
 		$cached = $this->cache->get( 'itinerary', $validated );
 		if ( $cached ) {
 			$this->log_stage_success( 'cache_hit', array( 'duration' => microtime( true ) - $start_time ) );
+			error_log( 'BATP: Cache hit returning cached itinerary.' );
 			return $cached;
 		}
 
@@ -89,27 +93,34 @@ class Engine {
 		$candidates = $this->stage_kmeans_lookup( $validated );
 		if ( is_wp_error( $candidates ) ) {
 			$this->log_stage_error( 'kmeans', $candidates );
+			error_log( 'BATP: K-Means failed: ' . $candidates->get_error_message() );
 			return $candidates;
 		}
 		$this->log_stage_success( 'kmeans', array( 'count' => count( $candidates ) ) );
+		error_log( 'BATP: K-Means candidates found: ' . count( $candidates ) );
 
 		// Stage 2: Semantic RAG (Pinecone semantic search)
 		$semantic = $this->stage_semantic_rag( $validated, $candidates );
 		if ( is_wp_error( $semantic ) ) {
 			$this->log_stage_error( 'semantic', $semantic );
+			error_log( 'BATP: Semantic RAG failed: ' . $semantic->get_error_message() );
 			return $semantic;
 		}
 		$candidates = $semantic;
 		$this->log_stage_success( 'semantic', array( 'count' => count( $candidates ) ) );
+		error_log( 'BATP: Semantic RAG count: ' . count( $candidates ) );
 
 		// Stage 3: MBA boost
 		$boosted = $this->stage_mba_boost( $candidates );
 		if ( is_wp_error( $boosted ) ) {
 			$this->log_stage_error( 'mba', $boosted );
-			return $boosted;
+			// Non-fatal error: Log it and proceed with original candidates
+			error_log( 'BATP: MBA Boost failed (non-fatal): ' . $boosted->get_error_message() );
+			$candidates = $candidates; 
+		} else {
+			$candidates = $boosted;
+			$this->log_stage_success( 'mba', array( 'count' => count( $candidates ) ) );
 		}
-		$candidates = $boosted;
-		$this->log_stage_success( 'mba', array( 'count' => count( $candidates ) ) );
 
 		// Stage 4: Filters & constraints
 		$filtered = $this->stage_filters_and_constraints( $validated, $candidates );
@@ -119,11 +130,13 @@ class Engine {
 		}
 		$candidates = $filtered;
 		$this->log_stage_success( 'filters', array( 'count' => count( $candidates ) ) );
+		error_log( 'BATP: Post-filter candidates: ' . count( $candidates ) );
 
 		// Stage 5: LLM ordering
 		$ordered = $this->stage_llm_ordering( $validated, $candidates );
 		if ( is_wp_error( $ordered ) ) {
 			$this->log_stage_error( 'llm', $ordered );
+			error_log( 'BATP: LLM ordering failed: ' . $ordered->get_error_message() );
 			return $ordered;
 		}
 		$candidates = $ordered['candidates'];
@@ -131,6 +144,7 @@ class Engine {
 		$meta       = array_merge( $ordered['meta'], array( 'duration' => microtime( true ) - $start_time ) );
 		$status     = empty( $itinerary['items'] ) ? 'partial' : 'complete';
 		$this->log_stage_success( 'llm', array( 'items' => count( $itinerary['items'] ?? array() ) ) );
+		error_log( 'BATP: Itinerary items generated: ' . count( $itinerary['items'] ?? array() ) );
 
 		$response = array(
 			'candidates' => $candidates,
@@ -158,6 +172,7 @@ class Engine {
 		}
 
 		if ( ! wp_verify_nonce( $request['nonce'], 'batp_generate_itinerary' ) ) {
+			error_log( sprintf( 'BATP nonce failed for user %d, token %s', get_current_user_id(), $request['nonce'] ) );
 			return new WP_Error( 'batp_invalid_nonce', __( 'Invalid security token.', 'brooklyn-ai-planner' ), array( 'status' => 403 ) );
 		}
 
@@ -209,6 +224,7 @@ class Engine {
 		// 1. Query Pinecone for centroids
 		// Note: This assumes a separate index or namespace for centroids, or a metadata filter.
 		// Here we assume a 'centroids' namespace.
+		error_log( "BATP: Pinecone query at lat: $lat, lng: $lng" );
 		$results = $this->pinecone->query(
 			'brooklyn-centroids', // Index name - this should probably be config
 			array_fill( 0, 768, 0 ), // Zero vector if we rely purely on metadata/geo, or we embed the user location context?
@@ -231,8 +247,23 @@ class Engine {
 		);
 
 		if ( is_wp_error( $results ) ) {
+			error_log( 'BATP: Pinecone query error: ' . $results->get_error_message() );
+			if ( 'http_request_failed' === $results->get_error_code() ) {
+				$this->pinecone_available = false;
+				$this->log_stage_error( 'pinecone_connect', $results );
+				error_log( 'BATP: Pinecone unavailable, attempting Supabase fallback.' );
+				$fallback = $this->load_supabase_fallback_candidates();
+				error_log( 'BATP: Supabase fallback count: ' . count( $fallback ) );
+				if ( ! empty( $fallback ) ) {
+					return $fallback;
+				}
+				return array();
+			}
+
 			return $results;
 		}
+		
+		error_log( 'BATP: Pinecone query raw match count: ' . count( $results['matches'] ?? [] ) );
 
 		$matches = $results['matches'] ?? array();
 		if ( empty( $matches ) ) {
@@ -263,10 +294,13 @@ class Engine {
 		}
 
 		$unique_slugs = array_values( array_unique( $slugs ) );
+		error_log( 'BATP: Unique slugs from Pinecone: ' . implode( ', ', $unique_slugs ) );
 		$records      = $this->load_venues_by_slugs( $unique_slugs );
 		if ( is_wp_error( $records ) ) {
+			error_log( 'BATP: Supabase load venues error: ' . $records->get_error_message() );
 			return $records;
 		}
+		error_log( 'BATP: Venues loaded from Supabase: ' . count( $records ) );
 
 		foreach ( $records as $slug => $record ) {
 			$this->cache_venue_record( $slug, $record );
@@ -296,7 +330,7 @@ class Engine {
 	 * @return array<int, array<string, mixed>>|WP_Error
 	 */
 	private function stage_semantic_rag( array $data, array $seed_candidates ) {
-		if ( empty( $data['interests'] ) ) {
+		if ( ! $this->pinecone_available || empty( $data['interests'] ) ) {
 			return $seed_candidates;
 		}
 
@@ -328,6 +362,17 @@ class Engine {
 
 		$results = $this->pinecone->query( 'brooklyn-venues', $payload );
 		if ( is_wp_error( $results ) ) {
+			if ( 'http_request_failed' === $results->get_error_code() ) {
+				$this->pinecone_available = false;
+				$this->log_stage_error( 'pinecone_semantic', $results );
+				if ( ! empty( $seed_candidates ) ) {
+					return $seed_candidates;
+				}
+				$fallback = $this->load_supabase_fallback_candidates();
+				if ( ! empty( $fallback ) ) {
+					return $fallback;
+				}
+			}
 			return $results;
 		}
 
@@ -359,6 +404,52 @@ class Engine {
 		}
 
 		return $this->merge_candidates( $seed_candidates, $semantic_candidates );
+	}
+
+	/**
+	 * Fallback when Pinecone is unavailable: load recent venues directly from Supabase.
+	 *
+	 * @return array<int, array<string, mixed>>
+	 */
+	private function load_supabase_fallback_candidates(): array {
+		error_log( 'BATP: Loading Supabase fallback candidates.' );
+		$response = $this->supabase->select(
+			'venues',
+			array(
+				'select' => self::VENUE_SELECT_FIELDS,
+				'limit'  => 25,
+			)
+		);
+
+		if ( is_wp_error( $response ) ) {
+			error_log( 'BATP: Supabase select error: ' . $response->get_error_message() );
+			return array();
+		}
+
+		if ( empty( $response ) ) {
+			error_log( 'BATP: Supabase select returned empty result.' );
+			return array();
+		}
+
+		error_log( 'BATP: Supabase fallback found ' . count( $response ) . ' records.' );
+
+		$candidates = array();
+		foreach ( $response as $record ) {
+			if ( empty( $record['slug'] ) ) {
+				continue;
+			}
+
+			$slug = $this->normalize_slug( $record['slug'] );
+			$this->cache_venue_record( $slug, $record );
+			$candidates[] = array(
+				'slug'    => $slug,
+				'score'   => null,
+				'data'    => $record,
+				'sources' => array( 'supabase_fallback' ),
+			);
+		}
+
+		return $candidates;
 	}
 
 	/**
@@ -921,6 +1012,9 @@ class Engine {
 				'budget'         => sanitize_text_field( (string) ( $data['budget'] ?? '' ) ),
 				'categories'     => array_values( array_filter( array_map( 'sanitize_text_field', (array) $categories ) ) ),
 				'vibe_summary'   => sanitize_text_field( $data['vibe_summary'] ?? '' ),
+				'website'        => esc_url_raw( $data['website'] ?? '' ),
+				'phone_number'   => sanitize_text_field( $data['phone'] ?? '' ), // Map DB 'phone' to 'phone_number'
+				'address'        => sanitize_text_field( $data['address'] ?? '' ),
 				'travel_minutes' => isset( $candidate['meta']['travel_minutes'] ) ? (int) $candidate['meta']['travel_minutes'] : null,
 				'sources'        => isset( $candidate['sources'] ) && is_array( $candidate['sources'] ) ? array_values( $candidate['sources'] ) : array(),
 				'score'          => isset( $candidate['score'] ) ? (float) $candidate['score'] : null,

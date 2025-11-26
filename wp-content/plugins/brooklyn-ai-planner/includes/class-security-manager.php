@@ -17,18 +17,30 @@ class Security_Manager {
 	private const RATE_LIMIT_REQUESTS = 5;
 	private const RATE_LIMIT_WINDOW   = HOUR_IN_SECONDS;
 
+	private int $rate_limit_requests;
+	private int $rate_limit_window;
+
+	public function __construct() {
+		$this->rate_limit_requests = $this->resolve_env_int( 'BATP_RATE_LIMIT_REQUESTS', self::RATE_LIMIT_REQUESTS );
+		$this->rate_limit_window   = $this->resolve_env_int( 'BATP_RATE_LIMIT_WINDOW', self::RATE_LIMIT_WINDOW );
+	}
+
 	/**
 	 * Enforce rate limit per client IP.
 	 *
 	 * @return true|WP_Error
 	 */
 	public function enforce_rate_limit( ?string $ip = null ) {
+		if ( $this->rate_limit_requests <= 0 ) {
+			return true;
+		}
+
 		$ip      = $ip ? sanitize_text_field( $ip ) : $this->detect_ip();
 		$ip_hash = md5( $ip );
 		$key     = 'batp_limit_' . $ip_hash;
 		$count   = (int) get_transient( $key );
 
-		if ( $count >= self::RATE_LIMIT_REQUESTS ) {
+		if ( $count >= $this->rate_limit_requests ) {
 			return new WP_Error(
 				'batp_rate_limited',
 				__( 'Too many itinerary requests. Please try again later.', 'brooklyn-ai-planner' ),
@@ -36,8 +48,15 @@ class Security_Manager {
 			);
 		}
 
-		set_transient( $key, $count + 1, self::RATE_LIMIT_WINDOW );
+		set_transient( $key, $count + 1, max( 60, $this->rate_limit_window ) );
 		return true;
+	}
+
+	public function reset_rate_limit( ?string $ip = null ): void {
+		$ip      = $ip ? sanitize_text_field( $ip ) : $this->detect_ip();
+		$ip_hash = md5( $ip );
+		$key     = 'batp_limit_' . $ip_hash;
+		delete_transient( $key );
 	}
 
 	public function create_nonce( string $action ): string {
@@ -88,6 +107,16 @@ class Security_Manager {
 	private function detect_ip(): string {
 		$ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
 		return sanitize_text_field( $ip );
+	}
+
+	private function resolve_env_int( string $env_key, int $default ): int {
+		$value = getenv( $env_key );
+		if ( false === $value ) {
+			return $default;
+		}
+
+		$int_value = (int) $value;
+		return $int_value >= 0 ? $int_value : $default;
 	}
 
 	/**

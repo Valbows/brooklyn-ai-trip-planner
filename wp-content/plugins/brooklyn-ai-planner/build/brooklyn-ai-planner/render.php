@@ -1,6 +1,7 @@
 <?php
 /**
  * Server render for the Brooklyn AI itinerary request block.
+ * New UI Layout - Horizontal Design
  *
  * @var array   $attributes
  * @var string  $content
@@ -12,10 +13,10 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 $defaults = array(
-	'heading'        => 'Plan your perfect Brooklyn day',
-	'subheading'     => 'Tell us what you love and we will craft a Gemini-powered itinerary.',
-	'ctaLabel'       => 'Generate itinerary',
-	'highlightColor' => '#ff4f5e',
+	'heading'        => 'Brooklyn AI Trip Planner',
+	'subheading'     => 'Discover Brooklyn\'s best spots with AI-powered recommendations',
+	'ctaLabel'       => 'Plan My Trip',
+	'highlightColor' => '#FF5F3D',
 );
 
 $attributes = wp_parse_args( $attributes, $defaults );
@@ -24,113 +25,227 @@ $subheading     = sanitize_text_field( $attributes['subheading'] );
 $cta            = sanitize_text_field( $attributes['ctaLabel'] );
 $highlight_color = sanitize_hex_color( $attributes['highlightColor'] ) ?: $defaults['highlightColor'];
 
+// Icons for chips (using emoji as fallback for simplicity in PHP render, or SVG)
 $interests = array(
-	'food'      => __( 'Foodie vibes', 'brooklyn-ai-planner' ),
-	'art'       => __( 'Art & culture', 'brooklyn-ai-planner' ),
-	'parks'     => __( 'Parks & outdoors', 'brooklyn-ai-planner' ),
-	'nightlife' => __( 'Nightlife', 'brooklyn-ai-planner' ),
-	'family'    => __( 'Family-friendly', 'brooklyn-ai-planner' ),
+	'art'           => '🎨 Art',
+	'food'          => '🍕 Food',
+	'parks'         => '🌳 Parks',
+	'shopping'      => '🛍️ Shopping',
+	'nightlife'     => '🍸 Nightlife',
+	'home_hobby'    => '🏠 Home & Hobby',
+	'services'      => '💼 Services',
+	'coffee'        => '☕ Coffee Shops',
+	'drinks'        => '🍹 Drinks',
+	'entertainment' => '🎵 Entertainment',
 );
 
-$accessibility_options = array(
-	'wheelchair' => __( 'Wheelchair accessible', 'brooklyn-ai-planner' ),
-	'sensory'    => __( 'Sensory-friendly', 'brooklyn-ai-planner' ),
-	'seating'    => __( 'Ample seating', 'brooklyn-ai-planner' ),
-);
-
-$nonce   = wp_create_nonce( 'batp_generate_itinerary' );
+$nonce       = wp_create_nonce( 'batp_generate_itinerary' );
+$rest_nonce  = wp_create_nonce( 'wp_rest' );
 $api_url = rest_url( 'brooklyn-ai/v1/itinerary' );
 $maps_key = \BrooklynAI\Plugin::instance()->get_maps_api_key();
 
 $wrapper_attrs = get_block_wrapper_attributes( array(
-	'class' => 'batp-itinerary-block',
+	'class' => 'batp-container',
 	'style' => sprintf( '--batp-highlight-color: %1$s;', esc_attr( $highlight_color ) ),
 ) );
 ?>
 
-<section <?php echo $wrapper_attrs; ?>>
-	<header class="batp-itinerary-block__header">
-		<h2 class="batp-itinerary-block__heading"><?php echo esc_html( $heading ); ?></h2>
-		<p class="batp-itinerary-block__subheading"><?php echo esc_html( $subheading ); ?></p>
-	</header>
-	<div class="batp-itinerary-layout">
-		<form 
-			class="batp-itinerary-form" 
-			data-batp-itinerary-form 
-			data-state="idle" 
-			data-nonce="<?php echo esc_attr( $nonce ); ?>" 
-			data-api-url="<?php echo esc_url( $api_url ); ?>"
-			data-google-maps-key="<?php echo esc_attr( $maps_key ); ?>"
-		>
-			<label class="batp-itinerary-form__field">
-				<span class="batp-itinerary-form__label"><?php esc_html_e( 'Neighborhood or starting point', 'brooklyn-ai-planner' ); ?></span>
-				<div style="display: flex; gap: 0.5rem;">
-					<input type="text" name="neighborhood" placeholder="e.g., Williamsburg" required style="flex:1;" />
-					<button type="button" data-batp-geo-trigger title="<?php esc_attr_e( 'Use my location', 'brooklyn-ai-planner' ); ?>" style="padding: 0 1rem; border: 1px solid #E0DCD5; border-radius: 12px; background: #fff; cursor: pointer;">
-						<span class="dashicons dashicons-location" style="color: var(--batp-highlight-color);"></span>
-					</button>
-				</div>
-				<input type="hidden" name="latitude" />
-				<input type="hidden" name="longitude" />
-			</label>
-			
-			<div class="batp-itinerary-form__field">
-				<span class="batp-itinerary-form__label"><?php esc_html_e( 'What vibes are you craving?', 'brooklyn-ai-planner' ); ?></span>
-				<div class="batp-itinerary-chips">
-					<?php foreach ( $interests as $slug => $label ) : ?>
-					<label class="batp-itinerary-chip">
-						<input type="checkbox" name="interests[]" value="<?php echo esc_attr( $slug ); ?>" />
-						<span><?php echo esc_html( $label ); ?></span>
-					</label>
-					<?php endforeach; ?>
-				</div>
-			</div>
-
-			<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
-				<label class="batp-itinerary-form__field">
-					<span class="batp-itinerary-form__label"><?php esc_html_e( 'Budget', 'brooklyn-ai-planner' ); ?></span>
-					<select name="budget" style="width: 100%; padding: 0.85rem; border: 1px solid #E0DCD5; border-radius: 12px; background: #fff;">
-						<option value="low"><?php esc_html_e( '$ - Budget friendly', 'brooklyn-ai-planner' ); ?></option>
-						<option value="medium" selected><?php esc_html_e( '$$ - Moderate', 'brooklyn-ai-planner' ); ?></option>
-						<option value="high"><?php esc_html_e( '$$$ - Treat yourself', 'brooklyn-ai-planner' ); ?></option>
-					</select>
-				</label>
-
-				<label class="batp-itinerary-form__field">
-					<span class="batp-itinerary-form__label"><?php esc_html_e( 'Duration', 'brooklyn-ai-planner' ); ?></span>
-					<div style="display: flex; align-items: center; gap: 1rem;">
-						<input type="range" name="duration" min="2" max="8" step="1" value="4" data-batp-duration style="flex:1;" />
-						<span class="batp-itinerary-form__range-value" data-batp-duration-output>4h</span>
-					</div>
-				</label>
-			</div>
-
-			<div class="batp-itinerary-form__field">
-				<details style="border: 1px solid #E0DCD5; border-radius: 12px; padding: 0.5rem 1rem; background: #fff;">
-					<summary style="cursor: pointer; font-weight: 600; color: #555; font-size: 0.9rem;"><?php esc_html_e( 'Accessibility & preferences', 'brooklyn-ai-planner' ); ?></summary>
-					<div style="margin-top: 1rem; display: flex; flex-direction: column; gap: 0.5rem;">
-						<?php foreach ( $accessibility_options as $slug => $label ) : ?>
-						<label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem;">
-							<input type="checkbox" name="accessibility_preferences[]" value="<?php echo esc_attr( $slug ); ?>" />
+<div <?php echo $wrapper_attrs; ?>>
+	
+	<!-- SEARCH PANEL -->
+	<div class="batp-search-panel">
+		<div class="batp-search-panel__header">
+			<h1 class="batp-search-panel__title"><?php echo esc_html( $heading ); ?></h1>
+			<p class="batp-search-panel__subtitle"><?php echo esc_html( $subheading ); ?></p>
+		</div>
+		
+		<div class="batp-search-panel__body">
+			<form 
+				class="batp-form" 
+				data-batp-itinerary-form 
+				data-state="idle" 
+				data-nonce="<?php echo esc_attr( $nonce ); ?>" 
+				data-rest-nonce="<?php echo esc_attr( $rest_nonce ); ?>"
+				data-api-url="<?php echo esc_url( $api_url ); ?>"
+				data-google-maps-key="<?php echo esc_attr( $maps_key ); ?>"
+			>
+				<!-- Interests -->
+				<div class="batp-form__section">
+					<span class="batp-form__section-label">What interests you?</span>
+					<div class="batp-form__chips">
+						<?php foreach ( $interests as $slug => $label ) : ?>
+						<label class="batp-form__chip <?php echo 'drinks' === $slug ? 'is-selected' : ''; // Demo state ?>">
+							<input type="checkbox" name="interests[]" value="<?php echo esc_attr( $slug ); ?>" <?php echo 'drinks' === $slug ? 'checked' : ''; ?> />
 							<?php echo esc_html( $label ); ?>
 						</label>
 						<?php endforeach; ?>
 					</div>
-				</details>
-			</div>
+				</div>
 
-			<div class="batp-itinerary-form__footer">
-				<button type="submit" class="batp-itinerary-block__cta">
+				<!-- Inputs Row -->
+				<div class="batp-form__row">
+					<!-- Location -->
+					<div class="batp-form__input-group batp-form__input-group--location">
+						<span class="batp-form__section-label">Your Location</span>
+						<input type="text" name="neighborhood" placeholder="e.g., Brooklyn Heights, or use current location" value="Brooklyn Heights" required />
+						<input type="hidden" name="latitude" />
+						<input type="hidden" name="longitude" />
+						<!-- Geolocation trigger could be added back here as an icon action -->
+					</div>
+
+					<!-- Time -->
+					<div class="batp-form__input-group batp-form__input-group--time">
+						<span class="batp-form__section-label">Available Time</span>
+						<select name="duration">
+							<option value="2">2 hours</option>
+							<option value="3" selected>3 hours</option>
+							<option value="4">4 hours</option>
+							<option value="5">5 hours</option>
+							<option value="6">6 hours</option>
+							<option value="8">Full Day</option>
+						</select>
+					</div>
+				</div>
+
+				<!-- Submit -->
+				<button type="submit" class="batp-form__submit">
+					<span class="dashicons dashicons-search" style="font-size:1.2em; width:auto; height:auto;"></span> 
 					<?php echo esc_html( $cta ); ?>
 				</button>
-				<p class="batp-itinerary-form__meta"><?php esc_html_e( 'Powered by Gemini · No PII stored', 'brooklyn-ai-planner' ); ?></p>
+				
+				<!-- Hidden Fields for Default Logic -->
+				<input type="hidden" name="budget" value="medium" /> 
+			</form>
+		</div>
+	</div>
+
+	<!-- RESULTS AREA -->
+	<div class="batp-results" id="batp-results-area">
+		<div class="batp-results__header">
+			<div class="batp-results__title-group">
+				<h2>Your Personalized Itinerary</h2>
+				<div class="batp-results__meta" data-batp-results-meta>3 venues found • 3 hours available</div>
 			</div>
-		</form>
-		<div class="batp-itinerary-map" data-batp-map-placeholder>
-			<div class="batp-itinerary-map__placeholder">
-				<p class="batp-itinerary-map__eyebrow"><?php esc_html_e( 'Map preview', 'brooklyn-ai-planner' ); ?></p>
-				<p class="batp-itinerary-map__copy"><?php esc_html_e( 'After you generate an itinerary, we will highlight your stops across Brooklyn here.', 'brooklyn-ai-planner' ); ?></p>
+			
+			<div class="batp-results__actions">
+				<button class="batp-results__btn batp-results__btn--primary">
+					<span class="dashicons dashicons-share"></span> Share & Export
+				</button>
+				<button class="batp-results__btn">
+					<span class="dashicons dashicons-filter"></span> Filters
+				</button>
+				<button class="batp-results__btn" onclick="document.querySelector('.batp-form').scrollIntoView({behavior:'smooth'})">
+					New Search
+				</button>
+			</div>
+		</div>
+
+		<!-- TABS -->
+		<div class="batp-tabs">
+			<button class="batp-tabs__btn is-active" data-tab="list">
+				<span class="dashicons dashicons-list-view"></span> List View
+			</button>
+			<button class="batp-tabs__btn" data-tab="map">
+				<span class="dashicons dashicons-location"></span> Map View
+			</button>
+		</div>
+
+		<!-- LIST CONTENT -->
+		<div class="batp-view-content is-active" id="batp-view-list">
+			<div class="batp-scroll-container">
+				<div class="batp-list-grid" id="batp-list-output">
+					<!-- Items injected via JS -->
+				</div>
+			</div>
+		</div>
+
+		<!-- MAP CONTENT -->
+		<div class="batp-view-content" id="batp-view-map">
+			<div id="batp-map-root"></div>
+		</div>
+	</div>
+
+	<!-- SHARE MODAL -->
+	<div class="batp-modal" id="batp-share-modal" aria-hidden="true">
+		<div class="batp-modal__overlay" data-modal-close></div>
+		<div class="batp-modal__content">
+			<div class="batp-modal__header">
+				<h3>Share & Export Your Itinerary</h3>
+				<button class="batp-modal__close" data-modal-close>&times;</button>
+			</div>
+			<div class="batp-modal__body">
+				<p class="batp-modal__subtitle">Save your Brooklyn adventure or share it with friends</p>
+				
+				<h4>Download</h4>
+				<div class="batp-share-grid">
+					<button class="batp-share-btn">
+						<span class="dashicons dashicons-pdf"></span>
+						<div class="batp-share-btn__text">
+							<strong>Download PDF</strong>
+							<span>Save as a portable document</span>
+						</div>
+					</button>
+					<button class="batp-share-btn">
+						<span class="dashicons dashicons-calendar"></span>
+						<div class="batp-share-btn__text">
+							<strong>Add to Calendar</strong>
+							<span>Export events to iCal</span>
+						</div>
+					</button>
+				</div>
+
+				<h4>Share Link</h4>
+				<p>Copy this link to share your itinerary</p>
+				<div class="batp-copy-row">
+					<input type="text" readonly value="Click 'Copy Link' to generate" class="batp-copy-input" id="batp-share-link-input">
+					<button class="batp-btn-copy" id="batp-btn-copy-link">Copy Link</button>
+				</div>
+				
+				<div class="batp-share-actions">
+					<button class="batp-share-link"><span class="dashicons dashicons-email"></span> Share via Email</button>
+					<button class="batp-share-link"><span class="dashicons dashicons-smartphone"></span> Share via SMS</button>
+				</div>
+
+				<div class="batp-itinerary-summary-box">
+					<h4>Itinerary Summary</h4>
+					<ul class="batp-summary-list" id="batp-summary-list">
+						<!-- Populated via JS -->
+					</ul>
+				</div>
 			</div>
 		</div>
 	</div>
-</section>
+
+	<!-- FILTER MODAL -->
+	<div class="batp-modal" id="batp-filter-modal" aria-hidden="true">
+		<div class="batp-modal__overlay" data-modal-close></div>
+		<div class="batp-modal__content batp-modal__content--sm">
+			<div class="batp-modal__header">
+				<h3>Filter Results</h3>
+				<button class="batp-modal__close" data-modal-close>&times;</button>
+			</div>
+			<div class="batp-modal__body">
+				<h4>Accessibility</h4>
+				<div class="batp-filter-group">
+					<label class="batp-checkbox-row">
+						<input type="checkbox" name="access_wheelchair"> 
+						<span>Wheelchair Accessible</span>
+					</label>
+					<label class="batp-checkbox-row">
+						<input type="checkbox" name="access_sensory"> 
+						<span>Sensory Friendly</span>
+					</label>
+					<label class="batp-checkbox-row">
+						<input type="checkbox" name="access_seating"> 
+						<span>Seating Available</span>
+					</label>
+				</div>
+				
+				<div class="batp-modal__footer">
+					<button class="batp-btn-primary batp-btn-full" id="batp-apply-filters">Apply Filters</button>
+				</div>
+			</div>
+		</div>
+	</div>
+
+</div>

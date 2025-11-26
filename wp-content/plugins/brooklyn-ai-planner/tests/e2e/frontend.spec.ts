@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 test.describe( 'Brooklyn AI Planner Block Frontend', () => {
-	test.skip( 'Should render form inputs correctly', async ( { page } ) => {
+	test( 'Should render form inputs correctly', async ( { page } ) => {
 		// 1. Setup: Login and create page with block
 		await page.goto( '/wp-login.php' );
 		if ( await page.locator( '#user_login' ).isVisible() ) {
@@ -50,29 +50,20 @@ test.describe( 'Brooklyn AI Planner Block Frontend', () => {
 		await page.goto( pageUrl );
 
 		// 3. Verify Elements
-		const form = page.locator( '.batp-itinerary-form' );
+		const form = page.locator( '.batp-form' );
 		await expect( form ).toBeVisible();
 
 		// Check inputs
 		await expect( form.locator( 'input[name="neighborhood"]' ) ).toBeVisible();
-		await expect( form.locator( 'select[name="budget"]' ) ).toBeVisible();
-		await expect( form.locator( 'input[type="range"]' ) ).toBeVisible();
+		await expect( form.locator( 'select[name="duration"]' ) ).toBeVisible(); // Duration dropdown
 		
 		// Check chips
-		const chips = form.locator( '.batp-itinerary-chip' );
-		await expect( chips ).toHaveCount( 5 ); // 5 interests
-
-		// Check Geolocation button
-		await expect( form.locator( '[data-batp-geo-trigger]' ) ).toBeVisible();
+		const chips = form.locator( '.batp-form__chip' );
+		await expect( chips ).toHaveCount( 10 ); // 10 interests
 	} );
 
-	// Note: We cannot easily test successful API submission in E2E without mocking the backend or having valid keys.
-	// However, we can verify that the form submits and handles the loading state.
-
-	test.skip( 'Should handle form submission and show loading state', async ( { page } ) => {
+	test( 'Should handle form submission and show loading state', async ( { page } ) => {
 		// Reuse login/setup logic or assume previous test state if running in sequence (Playwright isolates by default)
-		// For brevity, assume we are on the frontend page from previous step (in real suite we'd use beforeEach)
-		// ... Re-implement login/setup for isolation ...
 		await page.goto( '/wp-login.php' );
 		if ( await page.locator( '#user_login' ).isVisible() ) {
 			const username = process.env.WP_USERNAME || 'admin';
@@ -104,16 +95,17 @@ test.describe( 'Brooklyn AI Planner Block Frontend', () => {
 
 		// Fill Form
 		await page.fill( 'input[name="neighborhood"]', 'DUMBO' );
-		await page.click( 'input[value="food"]' ); // Select Food interest
+		
+		// Select an interest (Chip interaction: click the label)
+		await page.locator('.batp-form__chip input[value="food"]').click({force: true});
 		
 		// Submit
 		await page.click( 'button[type="submit"]' );
 
-		// Check Loading State
-		const form = page.locator( '.batp-itinerary-form' );
-		await expect( form ).toHaveAttribute( 'data-state', 'loading' );
+		// Check Loading State (Button text changes)
+		const submitBtn = page.locator( 'button[type="submit"]' );
+		await expect( submitBtn ).toHaveText( /Generating Plan.../ );
 		
-		const mapPlaceholder = page.locator( '.batp-itinerary-map__placeholder' );
-		await expect( mapPlaceholder ).toContainText( 'GENERATING' );
+		// We won't wait for full results as that depends on external APIs, but verification of state change confirms JS is attached.
 	} );
 } );

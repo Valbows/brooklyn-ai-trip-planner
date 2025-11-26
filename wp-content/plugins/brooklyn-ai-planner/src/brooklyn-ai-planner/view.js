@@ -1,107 +1,138 @@
-/**
- * Frontend interactions for the Brooklyn AI Itinerary Block.
- */
-import { Loader } from '@googlemaps/js-api-loader';
-
 const initItineraryForm = () => {
 	const form = document.querySelector( '[data-batp-itinerary-form]' );
 	if ( ! form ) {
 		return;
 	}
 
-	const durationInput = form.querySelector( '[data-batp-duration]' );
-	const durationOutput = form.querySelector( '[data-batp-duration-output]' );
-	const mapContainer = document.querySelector( '[data-batp-map-placeholder]' );
-	const geoTrigger = form.querySelector( '[data-batp-geo-trigger]' );
+	// Selectors
+	const resultsArea = document.getElementById( 'batp-results-area' );
+	const listOutput = document.getElementById( 'batp-list-output' );
+	const mapContainer = document.getElementById( 'batp-map-root' );
+	const metaText = document.querySelector( '[data-batp-results-meta]' );
+	const tabs = document.querySelectorAll( '.batp-tabs__btn' );
+	
 	const neighborhoodInput = form.querySelector( 'input[name="neighborhood"]' );
-	const latInput = form.querySelector( 'input[name="latitude"]' );
-	const lngInput = form.querySelector( 'input[name="longitude"]' );
 	const chips = Array.from(
-		form.querySelectorAll( '.batp-itinerary-chip input[type="checkbox"]' )
+		form.querySelectorAll( '.batp-form__chip input[type="checkbox"]' )
 	);
 
-	// 1. Input Interactions
-	if ( durationInput && durationOutput ) {
-		const syncDuration = () => {
-			durationOutput.textContent = `${ durationInput.value }h`;
-		};
-		syncDuration();
-		durationInput.addEventListener( 'input', syncDuration );
-	}
-
-	// Geolocation
-	if ( geoTrigger && navigator.geolocation ) {
-		geoTrigger.addEventListener( 'click', () => {
-			geoTrigger.disabled = true;
-			geoTrigger.innerHTML = '<span class="dashicons dashicons-update" style="animation: spin 1s linear infinite;"></span>';
-			
-			navigator.geolocation.getCurrentPosition( 
-				( position ) => {
-					const lat = position.coords.latitude;
-					const lng = position.coords.longitude;
-					
-					if ( latInput ) latInput.value = lat;
-					if ( lngInput ) lngInput.value = lng;
-					if ( neighborhoodInput ) neighborhoodInput.value = 'Current Location';
-					
-					geoTrigger.innerHTML = '<span class="dashicons dashicons-yes" style="color: green;"></span>';
-					setTimeout( () => {
-						geoTrigger.disabled = false;
-						geoTrigger.innerHTML = '<span class="dashicons dashicons-location" style="color: var(--batp-highlight-color);"></span>';
-					}, 2000 );
-				},
-				( error ) => {
-					console.warn( 'Geolocation error:', error );
-					geoTrigger.disabled = false;
-					geoTrigger.innerHTML = '<span class="dashicons dashicons-warning" style="color: orange;"></span>';
-					alert( 'Could not detect location. Please enter it manually.' );
-				}
-			);
-		} );
-	}
-
+	// 1. Chip Interactions
 	chips.forEach( ( input ) => {
 		input.addEventListener( 'change', () => {
 			input
-				.closest( '.batp-itinerary-chip' )
+				.closest( '.batp-form__chip' )
 				.classList.toggle( 'is-selected', input.checked );
 		} );
 	} );
 
-	// 2. Map & Render Helpers
+	// 2. Tabs Interaction
+	tabs.forEach( tab => {
+		tab.addEventListener( 'click', () => {
+			// Toggle active tab state
+			tabs.forEach( t => t.classList.remove( 'is-active' ) );
+			tab.classList.add( 'is-active' );
+
+			// Toggle content view
+			const targetId = tab.dataset.tab; // 'list' or 'map'
+			document.querySelectorAll( '.batp-view-content' ).forEach( content => {
+				content.classList.remove( 'is-active' );
+			} );
+			document.getElementById( `batp-view-${ targetId }` ).classList.add( 'is-active' );
+			
+			// If switching to map, resize trigger might be needed
+			if ( targetId === 'map' && googleMap ) {
+				setTimeout( () => {
+					google.maps.event.trigger( googleMap, 'resize' );
+				}, 100 );
+			}
+		} );
+	} );
+
+	// 3. Map Logic
 	let googleMap = null;
-	let mapLoader = null;
+
+	const waitForGoogleMaps = () => {
+		return new Promise( ( resolve, reject ) => {
+			let attempts = 0;
+			const check = () => {
+				attempts++;
+				if ( window.google && window.google.maps && window.google.maps.Map ) {
+					resolve();
+				} else if ( attempts > 50 ) { // 5 seconds timeout
+					reject( new Error( 'Timeout waiting for google.maps.Map' ) );
+				} else {
+					setTimeout( check, 100 );
+				}
+			};
+			check();
+		} );
+	};
+
+	const loadGoogleMaps = ( apiKey ) => {
+		return new Promise( ( resolve, reject ) => {
+			if ( window.google && window.google.maps ) {
+				resolve();
+				return;
+			}
+
+			const existingScript = document.querySelector( `script[src*="maps.googleapis.com/maps/api/js"]` );
+			if ( existingScript ) {
+				resolve(); 
+				return;
+			}
+
+			const script = document.createElement( 'script' );
+			script.src = `https://maps.googleapis.com/maps/api/js?key=${ apiKey }&libraries=places,geometry,marker&v=weekly&loading=async`;
+			script.async = true;
+			script.defer = true;
+			script.onload = () => resolve();
+			script.onerror = ( err ) => reject( err );
+			document.head.appendChild( script );
+		} );
+	};
 
 	const initMap = async ( apiKey, locations = [] ) => {
 		if ( ! mapContainer ) return;
 
-		// Clear previous content (placeholders/errors)
-		mapContainer.innerHTML = '<div style="height:100%; width:100%; border-radius: 16px;"></div>';
-		const mapElement = mapContainer.firstElementChild;
-
 		try {
-			if ( ! mapLoader ) {
-				mapLoader = new Loader( {
-					apiKey: apiKey,
-					version: 'weekly',
-					libraries: [ 'places', 'geometry' ],
-				} );
+			await loadGoogleMaps( apiKey );
+			await waitForGoogleMaps();
+			
+			// Compatibility Layer
+			let MapConstructor, AdvancedMarkerElement;
+			let useLegacyMarkers = false;
+
+			if ( typeof google.maps.importLibrary === 'function' ) {
+				try {
+					const { Map } = await google.maps.importLibrary( "maps" );
+					const { AdvancedMarkerElement: AME } = await google.maps.importLibrary( "marker" );
+					MapConstructor = Map;
+					AdvancedMarkerElement = AME;
+				} catch ( e ) {
+					console.warn('Modern map import failed, falling back to legacy', e);
+					MapConstructor = google.maps.Map;
+					useLegacyMarkers = true;
+				}
+			} else {
+				MapConstructor = google.maps.Map;
+				useLegacyMarkers = true;
 			}
 
-			const google = await mapLoader.load();
-			const { Map } = await google.maps.importLibrary( 'maps' );
-			const { AdvancedMarkerElement } = await google.maps.importLibrary( 'marker' );
+			if ( ! MapConstructor ) {
+				throw new Error( 'google.maps.Map constructor is missing' );
+			}
 
 			const center = locations.length > 0 
 				? { lat: locations[0].lat, lng: locations[0].lng }
 				: { lat: 40.6782, lng: -73.9442 }; // Default: Brooklyn
 
-			googleMap = new Map( mapElement, {
+			googleMap = new MapConstructor( mapContainer, {
 				center: center,
 				zoom: 13,
-				mapId: 'DEMO_MAP_ID', // Use a real Map ID in prod for Advanced Markers
-				disableDefaultUI: true,
+				mapId: 'DEMO_MAP_ID',
+				disableDefaultUI: false, // Allow controls for better UX in full view
 				zoomControl: true,
+				streetViewControl: false,
 			} );
 
 			if ( locations.length > 0 ) {
@@ -110,69 +141,66 @@ const initItineraryForm = () => {
 				locations.forEach( ( loc, index ) => {
 					const position = { lat: loc.lat, lng: loc.lng };
 					
-					// Create marker
-					const markerContent = document.createElement( 'div' );
-					markerContent.className = 'batp-map-marker';
-					markerContent.innerHTML = `<span style="background:#ff4f5e; color:#fff; border-radius:50%; width:24px; height:24px; display:flex; align-items:center; justify-content:center; font-weight:bold; box-shadow:0 2px 4px rgba(0,0,0,0.2);">${ index + 1 }</span>`;
+					if ( ! useLegacyMarkers && AdvancedMarkerElement ) {
+						// Modern: Advanced Marker
+						const markerContent = document.createElement( 'div' );
+						markerContent.className = 'batp-map-marker';
+						markerContent.innerHTML = `<span style="background:#FF5F3D; color:#fff; border-radius:50%; width:32px; height:32px; display:flex; align-items:center; justify-content:center; font-weight:bold; box-shadow:0 2px 4px rgba(0,0,0,0.2); font-size:14px;">${ index + 1 }</span>`;
 
-					new AdvancedMarkerElement( {
-						map: googleMap,
-						position: position,
-						content: markerContent,
-						title: loc.title,
-					} );
+						new AdvancedMarkerElement( {
+							map: googleMap,
+							position: position,
+							content: markerContent,
+							title: loc.title,
+						} );
+					} else {
+						// Legacy: Standard Marker
+						new google.maps.Marker( {
+							map: googleMap,
+							position: position,
+							label: {
+								text: ( index + 1 ).toString(),
+								color: 'white',
+								fontWeight: 'bold',
+							},
+							title: loc.title,
+						} );
+					}
 
 					bounds.extend( position );
 				} );
-
-				// Draw polyline if > 1 point
-				if ( locations.length > 1 ) {
-					const path = locations.map( l => ( { lat: l.lat, lng: l.lng } ) );
-					new google.maps.Polyline( {
-						path: path,
-						geodesic: true,
-						strokeColor: '#ff4f5e',
-						strokeOpacity: 1.0,
-						strokeWeight: 3,
-						map: googleMap,
-					} );
-				}
 
 				googleMap.fitBounds( bounds );
 			}
 
 		} catch ( error ) {
 			console.error( 'Map init error:', error );
-			mapContainer.innerHTML = `<div class="batp-itinerary-map__error"><p>Unable to load map.</p></div>`;
+			mapContainer.innerHTML = `<div style="padding:2rem; color:#d00;">Map failed to load.</div>`;
 		}
 	};
 
-	const renderError = ( message ) => {
-		if ( ! mapContainer ) return;
-		mapContainer.innerHTML = `
-			<div class="batp-itinerary-map__error" style="color: #d00; padding: 1rem;">
-				<p><strong>Error:</strong> ${ message }</p>
-			</div>
-		`;
-	};
-
-	const renderSuccess = ( data, apiKey ) => {
-		const items = data.candidates || [];
-		// We use candidates for map coordinates because LLM response might not have coords yet
-		// Actually Engine response structure: 
-		// candidates: array of { slug, data: { latitude, longitude, name ... } }
-		// itinerary: { items: [ { slug, title ... } ] }
-		// We should map itinerary items back to candidate coordinates.
-
+	const renderResults = ( data, apiKey ) => {
 		const itineraryItems = data.itinerary?.items || [];
 		if ( itineraryItems.length === 0 ) {
-			if ( mapContainer ) mapContainer.innerHTML = '<div style="padding:1rem;">No itinerary items found.</div>';
+			alert('No results found. Try different filters.');
 			return;
 		}
 
-		// Build location list for map
+		// Reveal Results Area
+		if ( resultsArea ) {
+			resultsArea.classList.add( 'is-active' );
+			resultsArea.scrollIntoView({ behavior: 'smooth' });
+		}
+
+		// Update Meta Text
+		if ( metaText ) {
+			const duration = form.querySelector('select[name="duration"]').value;
+			metaText.textContent = `${ itineraryItems.length } venues found • ${ duration } hours available`;
+		}
+
+		// Build Map Locations
 		const locations = [];
-		const candidateMap = new Map( data.candidates.map( c => [ c.slug, c ] ) );
+		const candidateMap = new Map( ( data.candidates || [] ).map( c => [ c.slug, c ] ) );
 
 		itineraryItems.forEach( item => {
 			const candidate = candidateMap.get( item.slug );
@@ -185,64 +213,199 @@ const initItineraryForm = () => {
 			}
 		} );
 
-		if ( apiKey && locations.length > 0 ) {
-			initMap( apiKey, locations );
-		} else {
-			// Fallback to list if no map key or coords
-			if ( mapContainer ) {
-				const listHtml = itineraryItems.map( ( item, index ) => `
-					<div style="margin-bottom: 0.5rem; text-align: left;">
-						<strong>${ index + 1 }. ${ item.title }</strong>
-						<div style="font-size: 0.9em; color: #666;">${ item.notes || '' }</div>
+		// Helper: Format Hours
+		const getHoursString = ( hoursData ) => {
+			if ( ! hoursData ) return 'See website for hours';
+			// Simple check for today's day (0=Sun, 1=Mon...)
+			const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+			const dayName = days[ new Date().getDay() ];
+			return hoursData[ dayName ] || 'Open today';
+		};
+
+		// Render List View (Cards)
+		const renderList = ( items ) => {
+			if ( ! listOutput ) return;
+			
+			listOutput.innerHTML = items.map( ( item, index ) => {
+				const candidate = candidateMap.get( item.slug );
+				const details = candidate?.data || {};
+				const website = details.website || '#';
+				const phone = details.phone_number || details.phone || ''; 
+				const address = details.address || '';
+				const vibe = details.vibe_summary || item.description || '';
+				const hours = details.hours ? getHoursString( details.hours ) : 'Open today';
+
+				// Directions URL
+				let dirUrl = '#';
+				if ( details.latitude && details.longitude ) {
+					dirUrl = `https://www.google.com/maps/dir/?api=1&destination=${details.latitude},${details.longitude}`;
+				} else if ( address ) {
+					dirUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}`;
+				} else {
+					dirUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(item.title + ', Brooklyn, NY')}`;
+				}
+
+				return `
+				<div class="batp-card" data-access='${ JSON.stringify( details.accessibility || [] ) }'>
+					<div class="batp-card__header">
+						<div>
+							<span class="batp-card__status">Open Now</span>
+							<h3 class="batp-card__title">${ index + 1 }. ${ item.title }</h3>
+							<span class="batp-card__tag">Best Match</span>
+						</div>
 					</div>
-				` ).join( '' );
-				mapContainer.innerHTML = `
-					<div style="padding: 1.5rem; width: 100%; overflow-y: auto; max-height: 320px;">
-						<h3 style="margin-top: 0;">Your Itinerary</h3>
-						${ listHtml }
+					
+					<p class="batp-card__description">${ vibe }</p>
+					
+					<div class="batp-card__details">
+						${ address ? `<div><span class="dashicons dashicons-location"></span> ${ address }</div>` : '' }
+						<div><span class="dashicons dashicons-clock"></span> ${ hours }</div>
+						${ phone ? `<div><span class="dashicons dashicons-phone"></span> ${ phone }</div>` : '' }
 					</div>
+
+					<div class="batp-card__footer">
+						<a href="${ dirUrl }" target="_blank" class="batp-card__btn-directions">
+							<span class="dashicons dashicons-location-alt"></span> Directions
+						</a>
+						<div class="batp-card__links">
+							${ website !== '#' ? `<a href="${ website }" target="_blank"><span class="dashicons dashicons-admin-site"></span> Website</a>` : '' }
+						</div>
+					</div>
+				</div>
 				`;
-			}
+			} ).join( '' );
+		};
+
+		// Initial Render
+		renderList( itineraryItems );
+		
+		// --- MODAL LOGIC ---
+		const setupModal = ( modalId, triggerBtn ) => {
+			const modal = document.getElementById( modalId );
+			if ( ! modal || ! triggerBtn ) return;
+
+			const open = () => {
+				modal.classList.add( 'is-open' );
+				modal.setAttribute( 'aria-hidden', 'false' );
+			};
+			
+			const close = () => {
+				modal.classList.remove( 'is-open' );
+				modal.setAttribute( 'aria-hidden', 'true' );
+			};
+
+			triggerBtn.onclick = (e) => { e.preventDefault(); open(); };
+			
+			// Close triggers
+			modal.querySelectorAll( '[data-modal-close]' ).forEach( el => {
+				el.onclick = (e) => { e.preventDefault(); close(); };
+			} );
+		};
+
+		// Share Modal
+		const shareBtn = document.querySelector('.batp-results__btn--primary');
+		setupModal( 'batp-share-modal', shareBtn );
+		
+		if ( shareBtn ) {
+			// Populate Summary on click
+			shareBtn.addEventListener( 'click', () => {
+				const summaryList = document.getElementById( 'batp-summary-list' );
+				if ( summaryList ) {
+					summaryList.innerHTML = itineraryItems.map( item => `<li>${ item.title }</li>` ).join('');
+				}
+				// Update Link
+				const linkInput = document.getElementById( 'batp-share-link-input' );
+				if ( linkInput ) linkInput.value = window.location.href; // Simple mock
+			} );
+		}
+
+		// Copy Link Logic
+		const copyBtn = document.getElementById( 'batp-btn-copy-link' );
+		if ( copyBtn ) {
+			copyBtn.onclick = () => {
+				const input = document.getElementById( 'batp-share-link-input' );
+				input.select();
+				navigator.clipboard.writeText( input.value );
+				const original = copyBtn.innerText;
+				copyBtn.innerText = 'Copied!';
+				setTimeout( () => copyBtn.innerText = original, 2000 );
+			};
+		}
+
+		// Filter Modal
+		const filterBtn = document.querySelector('.batp-results__btn:nth-child(2)');
+		setupModal( 'batp-filter-modal', filterBtn );
+
+		// Apply Filters Logic
+		const applyBtn = document.getElementById( 'batp-apply-filters' );
+		if ( applyBtn ) {
+			applyBtn.onclick = () => {
+				const modal = document.getElementById( 'batp-filter-modal' );
+				
+				// Get checked values
+				const wheelchair = modal.querySelector('input[name="access_wheelchair"]').checked;
+				const sensory = modal.querySelector('input[name="access_sensory"]').checked;
+				const seating = modal.querySelector('input[name="access_seating"]').checked;
+
+				// Filter items
+				const cards = listOutput.querySelectorAll( '.batp-card' );
+				cards.forEach( card => {
+					const access = JSON.parse( card.dataset.access || '[]' );
+					let visible = true;
+
+					if ( wheelchair && ! access.includes( 'wheelchair' ) ) visible = false;
+					if ( sensory && ! access.includes( 'sensory' ) ) visible = false;
+					if ( seating && ! access.includes( 'seating' ) ) visible = false;
+
+					card.style.display = visible ? 'flex' : 'none';
+				} );
+
+				// Close modal
+				modal.classList.remove( 'is-open' );
+			};
+		}
+
+		// Init Map
+		if ( apiKey && locations.length > 0 ) {
+			// Small delay to ensure container is visible/sized
+			setTimeout( () => {
+				initMap( apiKey, locations );
+			}, 100 );
 		}
 	};
 
-	// 3. Form Submission
+	// 4. Form Submission
 	form.addEventListener( 'submit', async ( event ) => {
 		event.preventDefault();
 		
 		const nonce = form.dataset.nonce;
+		const restNonce = form.dataset.restNonce;
 		const apiUrl = form.dataset.apiUrl;
 		const apiKey = form.dataset.googleMapsKey;
 
-		if ( ! nonce || ! apiUrl ) {
-			console.error( 'BATP: Missing API configuration.' );
-			return;
-		}
+		if ( ! nonce || ! apiUrl ) return;
 
 		const formData = new FormData( form );
 		const payload = {
 			neighborhood: formData.get( 'neighborhood' ),
 			interests: formData.getAll( 'interests[]' ),
 			budget: formData.get( 'budget' ),
-			accessibility_preferences: formData.getAll( 'accessibility_preferences[]' ),
-			latitude: formData.get( 'latitude' ) || null,
-			longitude: formData.get( 'longitude' ) || null,
-			duration: Number( formData.get( 'duration' ) ) * 60, // Convert hours to minutes for API
-			nonce: nonce // Explicitly include nonce in body for Engine check
+			duration: Number( formData.get( 'duration' ) ) * 60,
+			nonce: nonce
 		};
 
 		// UI State: Loading
-		form.dataset.state = 'loading';
-		if ( mapContainer ) {
-			mapContainer.innerHTML = '<div class="batp-itinerary-map__placeholder"><p class="batp-itinerary-map__eyebrow">GENERATING...</p></div>';
-		}
+		const submitBtn = form.querySelector( 'button[type="submit"]' );
+		const originalBtnText = submitBtn.innerHTML;
+		submitBtn.disabled = true;
+		submitBtn.innerHTML = 'Generating Plan...';
 
 		try {
 			const response = await fetch( apiUrl, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json',
-					'X-WP-Nonce': nonce,
+					...( restNonce ? { 'X-WP-Nonce': restNonce } : {} )
 				},
 				body: JSON.stringify( payload ),
 			} );
@@ -250,22 +413,17 @@ const initItineraryForm = () => {
 			const result = await response.json();
 
 			if ( ! response.ok ) {
-				throw new Error( result.message || result.code || 'An unknown error occurred.' );
+				throw new Error( result.message || 'Error generating itinerary' );
 			}
 
-			// UI State: Success
-			form.dataset.state = 'idle'; // Re-enable form
-			renderSuccess( result, apiKey );
-
-			// Dispatch event for other components
-			form.dispatchEvent(
-				new CustomEvent( 'batp-itinerary-success', { detail: result } )
-			);
+			renderResults( result, apiKey );
 
 		} catch ( error ) {
 			console.error( 'BATP Error:', error );
-			form.dataset.state = 'idle';
-			renderError( error.message );
+			alert( 'Error: ' + error.message );
+		} finally {
+			submitBtn.disabled = false;
+			submitBtn.innerHTML = originalBtnText;
 		}
 	} );
 };
