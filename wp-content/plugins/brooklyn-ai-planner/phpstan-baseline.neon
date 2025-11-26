@@ -36,11 +36,6 @@ parameters:
 			path: includes/api/class-rest-controller.php
 
 		-
-			message: "#^Method BrooklynAI\\\\Clients\\\\Pinecone_Client\\:\\:query\\(\\) invoked with 3 parameters, 2 required\\.$#"
-			count: 1
-			path: includes/class-engine.php
-
-		-
 			message: "#^Method BrooklynAI\\\\Engine\\:\\:apply_lift\\(\\) has no return type specified\\.$#"
 			count: 1
 			path: includes/class-engine.php
@@ -102,11 +97,6 @@ parameters:
 
 		-
 			message: "#^Method BrooklynAI\\\\Engine\\:\\:resolve_origin\\(\\) return type has no value type specified in iterable type array\\.$#"
-			count: 1
-			path: includes/class-engine.php
-
-		-
-			message: "#^Parameter \\#2 \\$payload of method BrooklynAI\\\\Clients\\\\Pinecone_Client\\:\\:query\\(\\) expects array\\<string, mixed\\>, array\\<int, int\\> given\\.$#"
 			count: 1
 			path: includes/class-engine.php
 

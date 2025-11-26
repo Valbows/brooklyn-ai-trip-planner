@@ -26,7 +26,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 class Engine {
-	private const VENUE_SELECT_FIELDS = 'id,slug,name,borough,categories,latitude,longitude,budget,vibe_summary,is_sbrn_member,accessibility,website,phone,address,hours';
+	private const VENUE_SELECT_FIELDS   = 'id,slug,name,borough,categories,latitude,longitude,budget,vibe_summary,is_sbrn_member,accessibility,website,phone,address,hours';
+	private const PINECONE_INDEX_NAME   = 'visit-brooklyn-ai-trip-planner';
 	private const MBA_SELECT_FIELDS   = 'seed_slug,recommendation_slug,lift,confidence';
 	private const MBA_MAX_SEEDS       = 5;
 	private const MBA_MIN_LIFT        = 1.2;
@@ -225,14 +226,14 @@ class Engine {
 		// Note: This assumes a separate index or namespace for centroids, or a metadata filter.
 		// Here we assume a 'centroids' namespace.
 		error_log( "BATP: Pinecone query at lat: $lat, lng: $lng" );
+		// Query Pinecone with geo-filter for nearby venues
 		$results = $this->pinecone->query(
-			'brooklyn-centroids', // Index name - this should probably be config
-			array_fill( 0, 768, 0 ), // Zero vector if we rely purely on metadata/geo, or we embed the user location context?
-			// Actually, usually K-means inference happens locally or we query closest centroid vector.
-			// Simplification: Query venues index directly with geo-filter if no centroids index exists yet.
-			// Let's use a radius search on the main index for Phase 4 start.
+			self::PINECONE_INDEX_NAME,
 			array(
-				'filter' => array(
+				'vector'          => array_fill( 0, 768, 0.01 ), // Small non-zero vector for geo-filter queries
+				'topK'            => 50,
+				'includeMetadata' => true,
+				'filter'          => array(
 					'latitude'  => array(
 						'$gte' => $lat - 0.05,
 						'$lte' => $lat + 0.05,
@@ -242,7 +243,6 @@ class Engine {
 						'$lte' => $lng + 0.05,
 					),
 				),
-				'topK'   => 50,
 			)
 		);
 
@@ -343,7 +343,6 @@ class Engine {
 		$payload = array(
 			'includeMetadata' => true,
 			'topK'            => 40,
-			'namespace'       => 'venues',
 			'vector'          => $embedding,
 		);
 
@@ -360,7 +359,7 @@ class Engine {
 			);
 		}
 
-		$results = $this->pinecone->query( 'brooklyn-venues', $payload );
+		$results = $this->pinecone->query( self::PINECONE_INDEX_NAME, $payload );
 		if ( is_wp_error( $results ) ) {
 			if ( 'http_request_failed' === $results->get_error_code() ) {
 				$this->pinecone_available = false;

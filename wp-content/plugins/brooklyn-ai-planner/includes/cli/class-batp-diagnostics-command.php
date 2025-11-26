@@ -99,7 +99,7 @@ class Batp_Diagnostics_Command extends WP_CLI_Command {
 	 */
 	private function check_pinecone( ?Pinecone_Client $client ): array {
 		if ( null === $client ) {
-			return $this->format_result( 'Pinecone', 'skipped', 0, 'API key/project not configured.' );
+			return $this->format_result( 'Pinecone', 'skipped', 0, 'API key or index host not configured.' );
 		}
 
 		$start    = microtime( true );
@@ -110,7 +110,12 @@ class Batp_Diagnostics_Command extends WP_CLI_Command {
 			return $this->format_result( 'Pinecone', 'error', $latency, $response->get_error_message() );
 		}
 
-		return $this->format_result( 'Pinecone', 'ok', $latency, sprintf( 'Indexes detected: %d', isset( $response['databases'] ) ? count( (array) $response['databases'] ) : 0 ) );
+		// New API returns 'indexes' array, old API used 'databases'
+		$indexes     = $response['indexes'] ?? $response['databases'] ?? array();
+		$index_count = count( (array) $indexes );
+		$host_info   = $client->is_configured() ? 'Host: ' . substr( $client->get_index_host(), 0, 30 ) . '...' : 'Host not set';
+
+		return $this->format_result( 'Pinecone', 'ok', $latency, sprintf( 'Indexes: %d | %s', $index_count, $host_info ) );
 	}
 
 	/**

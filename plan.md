@@ -231,6 +231,57 @@ wp-content/plugins/brooklyn-ai-planner/
   - [x] **Resolution:** Implement a permanent fix (e.g., bundling CA certificates or updating environment config) to ensure secure, verified connections.
   - [x] **Validation:** Verify vector search reliability and remove temporary patches.
 
+### Phase 6.6 – Pinecone API Migration (Serverless)
+**Objective:** Migrate from legacy pod-based Pinecone API to modern serverless API for improved reliability and performance.
+
+**Reference:** [Pinecone Documentation](https://docs.pinecone.io/guides/get-started/overview)
+
+**Key API Changes (per Pinecone Docs):**
+- **Control Plane URL:** `https://api.pinecone.io` (global, replaces `controller.{env}.pinecone.io`)
+- **Data Plane URL:** `https://{INDEX_HOST}/query` (unique per index, e.g., `docs-example-4zo0ijk.svc.us-east1-aws.pinecone.io`)
+- **Headers Required:**
+  - `Api-Key: YOUR_API_KEY`
+  - `Content-Type: application/json`
+  - `X-Pinecone-Api-Version: 2025-10`
+- **Deprecated:** `project` and `environment` parameters (replaced by direct `INDEX_HOST`)
+
+#### Step 1: Configuration Update
+- [x] Add new setting: `BATP_PINECONE_INDEX_HOST` (the unique DNS host, e.g., `my-index-abc123.svc.us-east1-aws.pinecone.io`)
+- [x] Update Settings Page UI with "Index Host URL" field, helper text, and validation
+- [x] Keep `BATP_PINECONE_API_KEY` (still required for authentication)
+- [x] Deprecate `BATP_PINECONE_PROJECT` and `BATP_PINECONE_ENVIRONMENT` (mark as legacy, keep for backward compat)
+- [x] Update `wp-config.php` documentation with new constant format
+
+#### Step 2: Pinecone_Client Refactor
+- [x] Update constructor: `__construct( string $api_key, string $index_host, bool $verify_ssl = true )`
+- [x] Set control plane URL to `https://api.pinecone.io` (constant)
+- [x] Refactor `index_url()` to return `https://{$this->index_host}/{$path}` directly
+- [x] Add `X-Pinecone-Api-Version: 2025-10` header to all requests
+- [x] Add `describe_index( string $index_name )` method to fetch host via control plane if not provided
+- [x] Maintain SSL verification with bundled CA cert (`certs/cacert.pem`)
+
+#### Step 3: Plugin Integration
+- [x] Update `Plugin::pinecone()` to use new `BATP_PINECONE_INDEX_HOST` setting
+- [x] Update `Engine.php` to work with new client interface (query/upsert unchanged)
+- [x] Update `Venue_Ingestion_Manager` for upsert operations (endpoint: `POST /vectors/upsert`)
+- [x] Update diagnostics CLI command to test new API format and display index info
+
+#### Step 4: Testing & Validation
+- [x] Update PHPUnit tests for new client constructor signature
+- [x] Test connectivity via `wp batp diagnostics connectivity`
+- [x] Verify vector query returns correct results (`POST /query`)
+- [x] Test venue ingestion with new API (`POST /vectors/upsert`)
+- [x] Verify SSL certificate verification works with bundled cert
+
+#### Step 5: Documentation & Cleanup
+- [x] Update `docs/security-and-config.md` with new configuration format:
+  ```php
+  define( 'BATP_PINECONE_API_KEY', 'pcsk_...' );
+  define( 'BATP_PINECONE_INDEX_HOST', 'my-index-abc123.svc.us-east1-aws.pinecone.io' );
+  ```
+- [x] Add migration notes to `log.md`
+- [x] Remove deprecated `project`/`environment` code paths after verification
+
 ### Phase 7 – QA, Hardening, & Release
 - [ ] **Automated quality gates**
   - [x] Run PHPCS (WordPress-Core + Extra + Docs), PHPStan level 8, PHPUnit suite, Jest, and Playwright locally + in GitHub Actions.

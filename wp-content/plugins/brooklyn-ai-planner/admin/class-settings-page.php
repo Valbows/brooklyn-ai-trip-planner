@@ -122,12 +122,17 @@ class Settings_Page {
 	}
 
 	/**
-	 * @param array{id:string,label:string,description?:string} $field
+	 * @param array{id:string,label:string,description?:string,type?:string} $field
 	 */
 	public function render_field( array $field ): void {
 		$value = $this->get_settings_value( $field['id'] );
+		$type  = isset( $field['type'] ) ? $field['type'] : 'secret';
 
-		$this->render_secret_input( $field, $value );
+		if ( 'url' === $type ) {
+			$this->render_url_input( $field, $value );
+		} else {
+			$this->render_secret_input( $field, $value );
+		}
 
 		if ( ! empty( $field['description'] ) ) {
 			printf( '<p class="description">%s</p>', esc_html( $field['description'] ) );
@@ -183,7 +188,13 @@ class Settings_Page {
 			array(
 				'id'          => 'pinecone_api_key',
 				'label'       => __( 'Pinecone API Key', 'brooklyn-ai-planner' ),
-				'description' => __( 'Used for K-Means and semantic search lookups.', 'brooklyn-ai-planner' ),
+				'description' => __( 'Used for vector search authentication.', 'brooklyn-ai-planner' ),
+			),
+			array(
+				'id'          => 'pinecone_index_host',
+				'label'       => __( 'Pinecone Index Host', 'brooklyn-ai-planner' ),
+				'description' => __( 'Unique index host URL (e.g., my-index-abc123.svc.us-east1-aws.pinecone.io). Find this in your Pinecone console under the index HOST field.', 'brooklyn-ai-planner' ),
+				'type'        => 'url',
 			),
 			array(
 				'id'          => 'supabase_service_key',
@@ -204,6 +215,18 @@ class Settings_Page {
 			esc_attr( $field['id'] ),
 			esc_attr( self::OPTION_KEY ),
 			esc_attr( $this->mask_value( $value ) )
+		);
+	}
+
+	/**
+	 * @param array{id:string,label:string,description?:string,type?:string} $field
+	 */
+	private function render_url_input( array $field, string $value ): void {
+		printf(
+			'<input type="text" id="%1$s" name="%2$s[%1$s]" value="%3$s" class="regular-text code" autocomplete="off" placeholder="my-index-abc123.svc.us-east1-aws.pinecone.io" />',
+			esc_attr( $field['id'] ),
+			esc_attr( self::OPTION_KEY ),
+			esc_attr( $value )
 		);
 	}
 

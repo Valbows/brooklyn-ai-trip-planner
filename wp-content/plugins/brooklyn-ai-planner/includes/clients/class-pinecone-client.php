@@ -1,8 +1,9 @@
 <?php
 /**
- * Pinecone REST client.
+ * Pinecone REST client for serverless indexes.
  *
  * @package BrooklynAI
+ * @see https://docs.pinecone.io/guides/get-started/overview
  */
 
 namespace BrooklynAI\Clients;
@@ -14,55 +15,81 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 class Pinecone_Client {
+	private const CONTROL_PLANE_URL = 'https://api.pinecone.io';
+	private const API_VERSION       = '2025-10';
+
 	private string $api_key;
-	private string $project;
-	private string $environment;
-	private string $host;
+	private string $index_host;
 	private bool $verify_ssl;
 
-	public function __construct( string $api_key, string $project, string $environment, string $host = '', bool $verify_ssl = true ) {
-		$this->api_key     = $api_key;
-		$this->project     = $project;
-		$this->environment = $environment;
-		$this->host        = $host ? $host : sprintf( 'https://controller.%s.pinecone.io', $environment );
-		$this->verify_ssl  = $verify_ssl;
+	/**
+	 * Initialize the Pinecone client.
+	 *
+	 * @param string $api_key    Pinecone API key.
+	 * @param string $index_host Unique index host (e.g., my-index-abc123.svc.us-east1-aws.pinecone.io).
+	 * @param bool   $verify_ssl Whether to verify SSL certificates.
+	 */
+	public function __construct( string $api_key, string $index_host = '', bool $verify_ssl = true ) {
+		$this->api_key    = $api_key;
+		$this->index_host = $this->normalize_host( $index_host );
+		$this->verify_ssl = $verify_ssl;
 	}
 
 	/**
-	 * Queries a Pinecone index.
-	 *
-	 * @param string $index
-	 * @param array  $payload
-	 * @return array|WP_Error
+	 * Normalize the host by removing https:// prefix if present.
 	 */
+	private function normalize_host( string $host ): string {
+		$host = trim( $host );
+		$host = preg_replace( '#^https?://#', '', $host );
+		return rtrim( $host, '/' );
+	}
+
 	/**
-	 * @param array<string, mixed> $payload
+	 * Queries the Pinecone index.
+	 *
+	 * @param string               $index   Index name (unused for serverless, kept for backward compat).
+	 * @param array<string, mixed> $payload Query payload with vector, topK, filter, etc.
 	 * @return array<string, mixed>|WP_Error
 	 */
 	public function query( string $index, array $payload ): array|WP_Error {
-		return $this->request( 'POST', $this->index_url( $index, 'query' ), $payload );
+		if ( '' === $this->index_host ) {
+			return new WP_Error( 'batp_pinecone_error', __( 'Pinecone index host not configured.', 'brooklyn-ai-planner' ) );
+		}
+		return $this->request( 'POST', $this->data_url( 'query' ), $payload );
 	}
 
 	/**
-	 * Describes indexes (metadata).
+	 * Lists all indexes in the project via control plane.
 	 *
-	 * @return array|WP_Error
-	 */
-	/**
 	 * @return array<string, mixed>|WP_Error
 	 */
 	public function list_indexes(): array|WP_Error {
-		return $this->request( 'GET', $this->controller_url( 'databases' ) );
+		return $this->request( 'GET', self::CONTROL_PLANE_URL . '/indexes' );
 	}
 
 	/**
-	 * Upserts vectors into a Pinecone index.
+	 * Describes a specific index by name.
 	 *
-	 * @param array<int, array<string, mixed>> $vectors
-	 * @param array<string, mixed>             $options
+	 * @param string $index_name The index name.
+	 * @return array<string, mixed>|WP_Error Index details including host.
+	 */
+	public function describe_index( string $index_name ): array|WP_Error {
+		return $this->request( 'GET', self::CONTROL_PLANE_URL . '/indexes/' . rawurlencode( $index_name ) );
+	}
+
+	/**
+	 * Upserts vectors into the Pinecone index.
+	 *
+	 * @param string                           $index   Index name (unused for serverless).
+	 * @param array<int, array<string, mixed>> $vectors Vectors to upsert.
+	 * @param array<string, mixed>             $options Optional namespace.
 	 * @return array<string, mixed>|WP_Error
 	 */
 	public function upsert( string $index, array $vectors, array $options = array() ): array|WP_Error {
+		if ( '' === $this->index_host ) {
+			return new WP_Error( 'batp_pinecone_error', __( 'Pinecone index host not configured.', 'brooklyn-ai-planner' ) );
+		}
+
 		$payload = array(
 			'vectors' => array_map( array( $this, 'prepare_vector' ), $vectors ),
 		);
@@ -71,7 +98,25 @@ class Pinecone_Client {
 			$payload['namespace'] = sanitize_key( (string) $options['namespace'] );
 		}
 
-		return $this->request( 'POST', $this->index_url( $index, 'vectors/upsert' ), $payload );
+		return $this->request( 'POST', $this->data_url( 'vectors/upsert' ), $payload );
+	}
+
+	/**
+	 * Check if the client is properly configured.
+	 *
+	 * @return bool
+	 */
+	public function is_configured(): bool {
+		return '' !== $this->api_key && '' !== $this->index_host;
+	}
+
+	/**
+	 * Get the current index host.
+	 *
+	 * @return string
+	 */
+	public function get_index_host(): string {
+		return $this->index_host;
 	}
 
 	/**
@@ -115,14 +160,27 @@ class Pinecone_Client {
 	}
 
 	/**
+	 * Build request headers with API version.
+	 *
 	 * @return array<string, string>
 	 */
 	private function headers(): array {
 		return array(
-			'Api-Key'      => $this->api_key,
-			'Content-Type' => 'application/json',
-			'Accept'       => 'application/json',
+			'Api-Key'                => $this->api_key,
+			'Content-Type'           => 'application/json',
+			'Accept'                 => 'application/json',
+			'X-Pinecone-Api-Version' => self::API_VERSION,
 		);
+	}
+
+	/**
+	 * Build data plane URL for index operations.
+	 *
+	 * @param string $path API path (e.g., 'query', 'vectors/upsert').
+	 * @return string Full URL.
+	 */
+	private function data_url( string $path ): string {
+		return 'https://' . $this->index_host . '/' . ltrim( $path, '/' );
 	}
 
 	/**
@@ -151,17 +209,16 @@ class Pinecone_Client {
 		return is_array( $body ) ? $body : array();
 	}
 
-	private function controller_url( string $path = '' ): string {
-		$path = ltrim( $path, '/' );
-		return $this->host . ( $path ? '/' . $path : '' );
-	}
-
-	private function index_url( string $index, string $path ): string {
-		$host = sprintf( 'https://%s-%s.svc.%s.pinecone.io', sanitize_key( $index ), $this->project, $this->environment );
-		return $host . '/' . ltrim( $path, '/' );
-	}
-
 	private function format_error( array $context ): WP_Error {
+		// Log detailed error for debugging
+		$message = isset( $context['body']['message'] ) ? $context['body']['message'] : 'Unknown error';
+		error_log( sprintf(
+			'BATP Pinecone Error: %s | Status: %d | URL: %s | Body: %s',
+			$message,
+			$context['status'] ?? 0,
+			$context['url'] ?? 'unknown',
+			wp_json_encode( $context['body'] ?? array() )
+		) );
 		return new WP_Error( 'batp_pinecone_error', __( 'Pinecone request failed.', 'brooklyn-ai-planner' ), $context );
 	}
 

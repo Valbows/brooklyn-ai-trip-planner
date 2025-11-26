@@ -149,13 +149,12 @@ class Plugin {
 	public function pinecone(): ?Pinecone_Client {
 		if ( null === $this->pinecone ) {
 			$api_key    = $this->setting_with_env_fallback( 'pinecone_api_key', 'BATP_PINECONE_API_KEY' );
-			$project    = $this->setting_with_env_fallback( 'pinecone_project', 'BATP_PINECONE_PROJECT' );
-			$env        = $this->setting_with_env_fallback( 'pinecone_environment', 'BATP_PINECONE_ENVIRONMENT', 'us-east-1' );
-			$ssl_flag   = strtolower( $this->setting_with_env_fallback( 'pinecone_disable_ssl_verify', 'BATP_PINECONE_DISABLE_SSL_VERIFY', 'false' ) ); // Default to FALSE (enabled) now that we bundle certs
+			$index_host = $this->setting_with_env_fallback( 'pinecone_index_host', 'BATP_PINECONE_INDEX_HOST' );
+			$ssl_flag   = strtolower( $this->setting_with_env_fallback( 'pinecone_disable_ssl_verify', 'BATP_PINECONE_DISABLE_SSL_VERIFY', 'false' ) );
 			$verify_ssl = ! in_array( $ssl_flag, array( '1', 'true', 'yes' ), true );
 
-			if ( '' !== $api_key && '' !== $project ) {
-				$this->pinecone = new Pinecone_Client( $api_key, $project, $env, '', $verify_ssl );
+			if ( '' !== $api_key && '' !== $index_host ) {
+				$this->pinecone = new Pinecone_Client( $api_key, $index_host, $verify_ssl );
 			}
 		}
 

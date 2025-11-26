@@ -132,9 +132,68 @@
 ## 2025-01-21
 - **Fix:** Analytics click tracking (website/directions/phone) now works. Root cause: Empty string `venue_id` caused Supabase 400 error (`invalid input syntax for type uuid: ""`). Updated `Analytics_Logger` to convert empty string to `null` before insert.
 
+## 2025-11-25 (Pinecone Migration Plan)
+- **Plan Created:** Phase 6.6 – Pinecone API Migration (Serverless)
+- **Root Cause Analysis:**
+  - Current `Pinecone_Client` uses **legacy pod-based URL format**: `https://{index}-{project}.svc.{environment}.pinecone.io`
+  - Pinecone has migrated to **serverless** with new URL format: `https://{index}-{hash}.svc.{region}-{cloud}.pinecone.io`
+  - Control plane URL changed from `controller.{env}.pinecone.io` to global `api.pinecone.io`
+  - `project` and `environment` parameters are deprecated; new API uses direct **Index Host URL**
+- **Solution:** Refactor `Pinecone_Client` to:
+  1. Accept `index_host` (unique DNS host) instead of `project`/`environment`
+  2. Use `https://api.pinecone.io` for control plane operations
+  3. Add `describe_index()` method to fetch host dynamically if not provided
+  4. Add new `BATP_PINECONE_INDEX_HOST` configuration setting
 
+## 2025-11-26 (Phase 6.6 Implementation Complete)
+- **Completed:** Pinecone API Migration to Serverless
+- **Changes Made:**
+  - **Settings Page:** Added `pinecone_index_host` field with URL input type and helper text
+  - **Pinecone_Client Refactored:**
+    - New constructor: `__construct( string $api_key, string $index_host, bool $verify_ssl )`
+    - Control plane URL: `https://api.pinecone.io` (constant)
+    - Data plane URL: `https://{index_host}/{path}` (direct host)
+    - Added `X-Pinecone-Api-Version: 2025-10` header to all requests
+    - Added `describe_index()`, `is_configured()`, `get_index_host()` methods
+    - Removed deprecated `project`, `environment`, `controller_url()`, `index_url()` code
+  - **Plugin.php:** Updated `pinecone()` factory to use `BATP_PINECONE_INDEX_HOST`
+  - **Diagnostics CLI:** Updated to display index host info and use new API response format
+- **New Configuration Format:**
+  ```php
+  define( 'BATP_PINECONE_API_KEY', 'pcsk_...' );
+  define( 'BATP_PINECONE_INDEX_HOST', 'my-index-abc123.svc.us-east1-aws.pinecone.io' );
+  ```
+- **All tests passing:** PHPStan, PHPCS, PHPUnit (18 tests, 56 assertions)
 
+## 2025-11-26 (Pinecone Venue Ingestion & Integration Test)
+- **Issue:** Initial Pinecone index had 1024 dimensions (llama-text-embed-v2 model)
+- **Solution:** Created new index `visit-brooklyn-ai-trip-planner` with 768 dimensions (matches Gemini text-embedding-004)
+- **Index Details:**
+  - Name: `visit-brooklyn-ai-trip-planner`
+  - Dimensions: 768
+  - Metric: cosine
+  - Host: `visit-brooklyn-ai-trip-planner-02d55qp.svc.aped-4627-b74a.pinecone.io`
+- **Venue Ingestion:**
+  - Synced 10 venues from Supabase to Pinecone
+  - Generated 768-dim embeddings via Gemini text-embedding-004
+  - All vectors upserted successfully
+- **Integration Test Results:**
+  - Query: "I want to see art and eat pizza in Brooklyn"
+  - Top results: Juliana's Pizza (0.63), Brooklyn Brewery (0.61), Brooklyn Museum (0.60)
+  - Semantic search working correctly
+- **Test Suite:** All unit tests passing (18 tests, 56 assertions)
 
+## 2025-11-26 (Engine Query Fix + Association Rules Schema)
+- **Issue:** Engine was calling `Pinecone_Client::query()` with 3 arguments (old signature)
+- **Fix:** Updated Engine to use correct 2-argument payload format with `vector`, `topK`, `includeMetadata`
+- **Issue:** `association_rules` table had wrong schema (arrays vs single values)
+- **Fix:** Updated SQL schema to use `seed_slug`/`recommendation_slug` columns matching Engine expectations
+- **Result:** Full pipeline working:
+  - Pinecone: 9 venues found
+  - K-Means: 9 candidates
+  - Semantic RAG: 10 candidates
+  - MBA Boost: Table accessible (empty, needs rule generation)
+  - Itinerary: 3 items generated successfully
 
 
 
