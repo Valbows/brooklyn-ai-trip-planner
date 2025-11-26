@@ -195,18 +195,18 @@ wp-content/plugins/brooklyn-ai-planner/
   - [x] Configure Playwright E2E to load block inside Gutenberg iframe, submit sample request, and validate map + itinerary output.
 
 ### Phase 6 – MBA Automation & Cron Jobs
-- [ ] **SQL + computation**
-  - [ ] Implement Supabase SQL function `generate_association_rules()` performing Apriori support/confidence/lift calculations with configurable thresholds.
-  - [ ] Store generated rules in `association_rules` table with indexes on venue pairs for fast lookup.
-- [ ] **Scheduling**
-  - [ ] Configure `pg_cron` job (if available) to run nightly; fallback to WP-Cron hitting Supabase RPC via secure endpoint.
-  - [ ] Persist cron metadata (last_run, status) in Supabase + WP options for dashboard visibility.
-- [ ] **Operational tooling**
-  - [ ] Add WP-CLI command `batp mba run` and `batp mba status` to trigger/inspect jobs with colorized output.
-  - [ ] Implement monitoring hook (Supabase webhook or WP admin notice) when job fails or exceeds runtime threshold.
-  - [ ] Enable logging of rule counts + runtime to Supabase analytics for trend tracking.
-- [ ] **Runbook**
-  - [ ] Document process for regenerating synthetic data, verifying cron completion, and troubleshooting Supabase errors; store in `/docs/runbook-mba.md`.
+- [x] **SQL + computation**
+  - [x] Implement Supabase SQL function `generate_association_rules()` performing Apriori support/confidence/lift calculations with configurable thresholds.
+  - [x] Store generated rules in `association_rules` table with indexes on venue pairs for fast lookup.
+- [x] **Scheduling**
+  - [x] Configure `pg_cron` job (if available) to run nightly; fallback to WP-Cron hitting Supabase RPC via secure endpoint.
+  - [x] Persist cron metadata (last_run, status) in Supabase + WP options for dashboard visibility.
+- [x] **Operational tooling**
+  - [x] Add WP-CLI command `batp mba run` and `batp mba status` to trigger/inspect jobs with colorized output.
+  - [x] Implement monitoring hook (Supabase webhook or WP admin notice) when job fails or exceeds runtime threshold.
+  - [x] Enable logging of rule counts + runtime to Supabase analytics for trend tracking.
+- [x] **Runbook**
+  - [x] Document process for regenerating synthetic data, verifying cron completion, and troubleshooting Supabase errors; store in `/docs/runbook-mba.md`.
 
 ### Phase 7 – QA, Hardening, & Release
 - [ ] **Automated quality gates**

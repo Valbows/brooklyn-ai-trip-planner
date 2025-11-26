@@ -100,5 +100,17 @@
   - Unskipped E2E tests (`tests/e2e/`) and updated frontend selectors to match new DOM structure.
 - **Build:** Rebuilt assets (`npm run build`).
 
+## 2025-11-25 (Phase 6 MBA Automation)
+- **SQL Logic:** Created `docs/sql/050_mba_function.sql` implementing Apriori algorithm (Support/Confidence/Lift) as a Supabase RPC function `generate_association_rules`.
+- **CLI Tooling:** Added `wp batp mba run` and `wp batp mba status` commands to trigger rule generation and check status.
+- **Scheduling:** Implemented `batp_daily_mba_refresh` cron hook in `Plugin::activate()` to run the MBA job daily via WP-Cron.
+- **Documentation:** Created `docs/runbook-mba.md` detailing manual/scheduled execution and troubleshooting.
+- **Quality Assurance:**
+  - Fixed all JS/CSS linting errors in `view.js` and `style.scss` (replaced deprecated `darken` with `color.scale`, added browser globals).
+  - Fixed PHPCS errors across codebase using `phpcbf`.
+  - Verified `npm test` passes (Lint + Unit Tests) with 100% green on `phpunit`.
+
+
+
 
 

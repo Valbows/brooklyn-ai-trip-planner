@@ -48,10 +48,14 @@ class Plugin {
 
 	public static function activate(): void {
 		flush_rewrite_rules();
+		if ( ! wp_next_scheduled( 'batp_daily_mba_refresh' ) ) {
+			wp_schedule_event( time(), 'daily', 'batp_daily_mba_refresh' );
+		}
 	}
 
 	public static function deactivate(): void {
 		flush_rewrite_rules();
+		wp_clear_scheduled_hook( 'batp_daily_mba_refresh' );
 	}
 
 	public function boot(): void {
@@ -73,11 +77,11 @@ class Plugin {
 	}
 
 	private function initialize_services(): void {
-		$this->security      = new Security_Manager();
-		$this->cache         = new Cache_Service();
-		$this->supabase      = $this->make_supabase_client();
-		$this->analytics     = new Analytics_Logger( $this->supabase );
-		$this->settings_page = new Settings_Page();
+		$this->security        = new Security_Manager();
+		$this->cache           = new Cache_Service();
+		$this->supabase        = $this->make_supabase_client();
+		$this->analytics       = new Analytics_Logger( $this->supabase );
+		$this->settings_page   = new Settings_Page();
 		$this->rest_controller = new REST_Controller();
 	}
 
@@ -100,7 +104,7 @@ class Plugin {
 				'file'  => BATP_PLUGIN_PATH . 'includes/cli/class-batp-ingest-command.php',
 				'class' => '\\BrooklynAI\\CLI\\Batp_Ingest_Command',
 			),
-			'batp generate-rules' => array(
+			'batp mba'         => array(
 				'file'  => BATP_PLUGIN_PATH . 'includes/cli/class-batp-mba-command.php',
 				'class' => '\\BrooklynAI\\CLI\\Batp_Mba_Command',
 			),
@@ -140,10 +144,10 @@ class Plugin {
 
 	public function pinecone(): ?Pinecone_Client {
 		if ( null === $this->pinecone ) {
-			$api_key = $this->setting_with_env_fallback( 'pinecone_api_key', 'BATP_PINECONE_API_KEY' );
-			$project = $this->setting_with_env_fallback( 'pinecone_project', 'BATP_PINECONE_PROJECT' );
-			$env     = $this->setting_with_env_fallback( 'pinecone_environment', 'BATP_PINECONE_ENVIRONMENT', 'us-east-1' );
-			$ssl_flag = strtolower( $this->setting_with_env_fallback( 'pinecone_disable_ssl_verify', 'BATP_PINECONE_DISABLE_SSL_VERIFY', 'true' ) ); // Default to TRUE (disabled) for dev
+			$api_key    = $this->setting_with_env_fallback( 'pinecone_api_key', 'BATP_PINECONE_API_KEY' );
+			$project    = $this->setting_with_env_fallback( 'pinecone_project', 'BATP_PINECONE_PROJECT' );
+			$env        = $this->setting_with_env_fallback( 'pinecone_environment', 'BATP_PINECONE_ENVIRONMENT', 'us-east-1' );
+			$ssl_flag   = strtolower( $this->setting_with_env_fallback( 'pinecone_disable_ssl_verify', 'BATP_PINECONE_DISABLE_SSL_VERIFY', 'true' ) ); // Default to TRUE (disabled) for dev
 			$verify_ssl = ! in_array( $ssl_flag, array( '1', 'true', 'yes' ), true );
 
 			if ( '' !== $api_key && '' !== $project ) {
@@ -194,7 +198,7 @@ class Plugin {
 
 	private function setting_with_env_fallback( string $option_key, string $env_key, string $default_value = '' ): string {
 		$env_value = getenv( $env_key );
-		
+
 		// Priority 1: Environment Variable (Hard override)
 		if ( $env_value && '' !== trim( $env_value ) ) {
 			return trim( $env_value );
@@ -203,6 +207,10 @@ class Plugin {
 		// Priority 2: Database Setting
 		// Priority 3: Default Value (via fallback arg in get_setting)
 		return trim( $this->get_setting( $option_key, $default_value ) );
+	}
+
+	public function run_scheduled_mba(): void {
+		$this->supabase()->run_mba_job();
 	}
 
 	public function register_blocks(): void {

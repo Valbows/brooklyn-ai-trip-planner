@@ -63,7 +63,7 @@ class REST_Controller extends WP_REST_Controller {
 		// However, basic nonce check for REST API is handled by WP if logged in,
 		// but for public facing blocks, we usually rely on a specific nonce or just the rate limiter.
 		// Engine::stage_guardrails checks 'batp_generate_itinerary' nonce.
-		return true; 
+		return true;
 	}
 
 	/**
@@ -77,11 +77,11 @@ class REST_Controller extends WP_REST_Controller {
 
 		// Pass headers/IP context if needed by Security Manager (handled inside Engine usually via $_SERVER)
 		// But here we just pass the body params.
-		
+
 		// Ensure nonce is passed from headers or body
 		if ( ! isset( $params['nonce'] ) && $request->get_header( 'X-WP-Nonce' ) ) {
 			// Actually Engine expects 'nonce' in the $request array.
-			// Frontend should send it in the body for the custom check, 
+			// Frontend should send it in the body for the custom check,
 			// or we map X-WP-Nonce to it.
 			// But Engine checks `wp_verify_nonce( $request['nonce'], 'batp_generate_itinerary' )`.
 			// X-WP-Nonce is usually for 'wp_rest' action.
@@ -106,26 +106,26 @@ class REST_Controller extends WP_REST_Controller {
 	 */
 	public function get_endpoint_args_for_item_schema( $method = WP_REST_Server::CREATABLE ) {
 		return array(
-			'nonce' => array(
+			'nonce'        => array(
 				'required'          => true,
 				'type'              => 'string',
-				'validate_callback' => function( $param ) {
+				'validate_callback' => function ( $param ) {
 					return is_string( $param ) && ! empty( $param );
 				},
 			),
-			'interests' => array(
+			'interests'    => array(
 				'required' => true,
 				'type'     => 'array',
 				'items'    => array(
 					'type' => 'string',
 				),
 			),
-			'time_window' => array(
+			'time_window'  => array(
 				'required' => false,
 				'type'     => 'integer',
 				'default'  => 240,
 			),
-			'budget' => array(
+			'budget'       => array(
 				'required' => false,
 				'type'     => 'string',
 				'enum'     => array( 'low', 'medium', 'high' ),
@@ -135,11 +135,11 @@ class REST_Controller extends WP_REST_Controller {
 				'required' => false, // Used for geocoding if lat/lng missing
 				'type'     => 'string',
 			),
-			'latitude' => array(
+			'latitude'     => array(
 				'required' => false,
 				'type'     => 'number',
 			),
-			'longitude' => array(
+			'longitude'    => array(
 				'required' => false,
 				'type'     => 'number',
 			),

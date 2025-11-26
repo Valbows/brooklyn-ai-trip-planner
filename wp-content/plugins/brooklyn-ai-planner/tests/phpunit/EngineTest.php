@@ -32,13 +32,13 @@ class EngineTest extends TestCase {
 	protected function setUp(): void {
 		parent::setUp();
 		\Brain\Monkey\setUp();
-		$this->security  = $this->createMock( Security_Manager::class );
-		$this->cache     = $this->createMock( Cache_Service::class );
-		$this->pinecone  = $this->createMock( Pinecone_Client::class );
-		$this->supabase  = $this->createMock( Supabase_Client::class );
-		$this->maps      = $this->createMock( GoogleMaps_Client::class );
-		$this->gemini    = $this->createMock( Gemini_Client::class );
-		$this->analytics = $this->createMock( Analytics_Logger::class );
+		$this->security        = $this->createMock( Security_Manager::class );
+		$this->cache           = $this->createMock( Cache_Service::class );
+		$this->pinecone        = $this->createMock( Pinecone_Client::class );
+		$this->supabase        = $this->createMock( Supabase_Client::class );
+		$this->maps            = $this->createMock( GoogleMaps_Client::class );
+		$this->gemini          = $this->createMock( Gemini_Client::class );
+		$this->analytics       = $this->createMock( Analytics_Logger::class );
 		$this->gemini_response = $this->mock_llm_payload();
 		$this->gemini->method( 'generate_content' )
 			->willReturnCallback(
@@ -77,7 +77,7 @@ class EngineTest extends TestCase {
 
 	public function test_guardrails_rate_limit_exceeded() {
 		\Brain\Monkey\Functions\expect( 'wp_verify_nonce' )->andReturn( true );
-		
+
 		$this->security->method( 'enforce_rate_limit' )->willReturn( new WP_Error( 'batp_rate_limited', 'Limit exceeded' ) );
 
 		$result = $this->engine->generate_itinerary( array( 'nonce' => 'good_token' ) );
@@ -89,7 +89,7 @@ class EngineTest extends TestCase {
 	public function test_kmeans_lookup_success() {
 		\Brain\Monkey\Functions\expect( 'wp_verify_nonce' )->andReturn( true );
 		\Brain\Monkey\Functions\expect( 'wp_json_encode' )->andReturn( '{"hash":"123"}' );
-		
+
 		$this->security->method( 'enforce_rate_limit' )->willReturn( true );
 		$this->cache->method( 'get' )->willReturn( false ); // No cache hit
 
@@ -97,8 +97,14 @@ class EngineTest extends TestCase {
 		$this->pinecone->method( 'query' )->willReturn(
 			array(
 				'matches' => array(
-					array( 'id' => 'venue-1', 'score' => 0.9 ),
-					array( 'id' => 'venue-2', 'score' => 0.8 ),
+					array(
+						'id'    => 'venue-1',
+						'score' => 0.9,
+					),
+					array(
+						'id'    => 'venue-2',
+						'score' => 0.8,
+					),
 				),
 			)
 		);
@@ -109,8 +115,14 @@ class EngineTest extends TestCase {
 				function ( $table, $column, $values ) {
 					if ( 'venues' === $table ) {
 						return array(
-							array( 'slug' => 'venue-1', 'name' => 'Venue One' ),
-							array( 'slug' => 'venue-2', 'name' => 'Venue Two' ),
+							array(
+								'slug' => 'venue-1',
+								'name' => 'Venue One',
+							),
+							array(
+								'slug' => 'venue-2',
+								'name' => 'Venue Two',
+							),
 						);
 					}
 
@@ -141,7 +153,10 @@ class EngineTest extends TestCase {
 		$this->pinecone->method( 'query' )->willReturn(
 			array(
 				'matches' => array(
-					array( 'id' => 'venue-1', 'score' => 0.9 ),
+					array(
+						'id'    => 'venue-1',
+						'score' => 0.9,
+					),
 				),
 			)
 		);
@@ -175,8 +190,14 @@ class EngineTest extends TestCase {
 		$this->pinecone->method( 'query' )->willReturn(
 			array(
 				'matches' => array(
-					array( 'id' => 'venue-1', 'score' => 0.9 ),
-					array( 'id' => 'venue-2', 'score' => 0.8 ),
+					array(
+						'id'    => 'venue-1',
+						'score' => 0.9,
+					),
+					array(
+						'id'    => 'venue-2',
+						'score' => 0.8,
+					),
 				),
 			)
 		);
@@ -186,8 +207,16 @@ class EngineTest extends TestCase {
 				function ( $table ) {
 					if ( 'venues' === $table ) {
 						return array(
-							array( 'slug' => 'venue-1', 'name' => 'Venue One', 'budget' => 'low' ),
-							array( 'slug' => 'venue-2', 'name' => 'Venue Two', 'budget' => 'high' ),
+							array(
+								'slug'   => 'venue-1',
+								'name'   => 'Venue One',
+								'budget' => 'low',
+							),
+							array(
+								'slug'   => 'venue-2',
+								'name'   => 'Venue Two',
+								'budget' => 'high',
+							),
 						);
 					}
 
@@ -201,9 +230,9 @@ class EngineTest extends TestCase {
 
 		$result = $this->engine->generate_itinerary(
 			array(
-				'nonce'       => 'good_token',
-				'interests'   => array(),
-				'budget'      => 'low',
+				'nonce'     => 'good_token',
+				'interests' => array(),
+				'budget'    => 'low',
 			)
 		);
 
@@ -220,8 +249,14 @@ class EngineTest extends TestCase {
 		$this->pinecone->method( 'query' )->willReturn(
 			array(
 				'matches' => array(
-					array( 'id' => 'venue-1', 'score' => 0.9 ),
-					array( 'id' => 'venue-2', 'score' => 0.8 ),
+					array(
+						'id'    => 'venue-1',
+						'score' => 0.9,
+					),
+					array(
+						'id'    => 'venue-2',
+						'score' => 0.8,
+					),
 				),
 			)
 		);
@@ -231,8 +266,16 @@ class EngineTest extends TestCase {
 				function ( $table ) {
 					if ( 'venues' === $table ) {
 						return array(
-							array( 'slug' => 'venue-1', 'name' => 'Venue One', 'is_sbrn_member' => false ),
-							array( 'slug' => 'venue-2', 'name' => 'Venue Two', 'is_sbrn_member' => true ),
+							array(
+								'slug'           => 'venue-1',
+								'name'           => 'Venue One',
+								'is_sbrn_member' => false,
+							),
+							array(
+								'slug'           => 'venue-2',
+								'name'           => 'Venue Two',
+								'is_sbrn_member' => true,
+							),
 						);
 					}
 
@@ -246,8 +289,8 @@ class EngineTest extends TestCase {
 
 		$result = $this->engine->generate_itinerary(
 			array(
-				'nonce'       => 'good_token',
-				'interests'   => array(),
+				'nonce'     => 'good_token',
+				'interests' => array(),
 			)
 		);
 
@@ -267,9 +310,12 @@ class EngineTest extends TestCase {
 			array(
 				'matches' => array(
 					array(
-						'id'     => 'venue-1',
-						'score'  => 0.99,
-						'metadata' => array( 'slug' => 'venue-1', 'name' => 'Venue One' ),
+						'id'       => 'venue-1',
+						'score'    => 0.99,
+						'metadata' => array(
+							'slug' => 'venue-1',
+							'name' => 'Venue One',
+						),
 					),
 				),
 			)
@@ -279,7 +325,12 @@ class EngineTest extends TestCase {
 			->willReturnCallback(
 				function ( $table ) {
 					if ( 'venues' === $table ) {
-						return array( array( 'slug' => 'venue-1', 'name' => 'Venue One' ) );
+						return array(
+							array(
+								'slug' => 'venue-1',
+								'name' => 'Venue One',
+							),
+						);
 					}
 
 					if ( 'association_rules' === $table ) {
@@ -348,8 +399,14 @@ class EngineTest extends TestCase {
 		$this->pinecone->method( 'query' )->willReturn(
 			array(
 				'matches' => array(
-					array( 'id' => 'venue-1', 'score' => 0.9 ),
-					array( 'id' => 'venue-2', 'score' => 0.8 ),
+					array(
+						'id'    => 'venue-1',
+						'score' => 0.9,
+					),
+					array(
+						'id'    => 'venue-2',
+						'score' => 0.8,
+					),
 				),
 			)
 		);
@@ -359,8 +416,14 @@ class EngineTest extends TestCase {
 				function ( $table ) {
 					if ( 'venues' === $table ) {
 						return array(
-							array( 'slug' => 'venue-1', 'name' => 'Venue One' ),
-							array( 'slug' => 'venue-2', 'name' => 'Venue Two' ),
+							array(
+								'slug' => 'venue-1',
+								'name' => 'Venue One',
+							),
+							array(
+								'slug' => 'venue-2',
+								'name' => 'Venue Two',
+							),
 						);
 					}
 
@@ -394,7 +457,7 @@ class EngineTest extends TestCase {
 		$this->assertArrayHasKey( 'mba', $result['candidates'][1]['meta'] );
 	}
 
-	public function test_mba_supabase_error_returns_error() {
+	public function test_mba_supabase_error_is_non_fatal() {
 		\Brain\Monkey\Functions\expect( 'wp_verify_nonce' )->andReturn( true );
 		$this->security->method( 'enforce_rate_limit' )->willReturn( true );
 		$this->cache->method( 'get' )->willReturn( false );
@@ -402,7 +465,10 @@ class EngineTest extends TestCase {
 		$this->pinecone->method( 'query' )->willReturn(
 			array(
 				'matches' => array(
-					array( 'id' => 'venue-1', 'score' => 0.9 ),
+					array(
+						'id'    => 'venue-1',
+						'score' => 0.9,
+					),
 				),
 			)
 		);
@@ -411,22 +477,31 @@ class EngineTest extends TestCase {
 			->willReturnCallback(
 				function ( $table ) {
 					if ( 'venues' === $table ) {
-						return array( array( 'slug' => 'venue-1', 'name' => 'Venue One' ) );
+						return array(
+							array(
+								'slug' => 'venue-1',
+								'name' => 'Venue One',
+							),
+						);
 					}
 
-					return new WP_Error( 'batp_supabase_http_error', 'Rules down' );
+					if ( 'association_rules' === $table ) {
+						return new WP_Error( 'batp_supabase_http_error', 'Rules down' );
+					}
+
+					return array();
 				}
 			);
 
 		$result = $this->engine->generate_itinerary(
 			array(
-				'nonce'       => 'good_token',
-				'interests'   => array(),
+				'nonce'     => 'good_token',
+				'interests' => array(),
 			)
 		);
 
-		$this->assertInstanceOf( WP_Error::class, $result );
-		$this->assertEquals( 'batp_supabase_http_error', $result->get_error_code() );
+		$this->assertIsArray( $result );
+		$this->assertArrayHasKey( 'itinerary', $result );
 	}
 
 	public function test_llm_ordering_successfully_reorders_candidates() {
@@ -437,8 +512,14 @@ class EngineTest extends TestCase {
 		$this->pinecone->method( 'query' )->willReturn(
 			array(
 				'matches' => array(
-					array( 'id' => 'venue-1', 'score' => 0.9 ),
-					array( 'id' => 'venue-2', 'score' => 0.8 ),
+					array(
+						'id'    => 'venue-1',
+						'score' => 0.9,
+					),
+					array(
+						'id'    => 'venue-2',
+						'score' => 0.8,
+					),
 				),
 			)
 		);
@@ -498,8 +579,8 @@ class EngineTest extends TestCase {
 
 		$result = $this->engine->generate_itinerary(
 			array(
-				'nonce'       => 'good_token',
-				'interests'   => array(),
+				'nonce'     => 'good_token',
+				'interests' => array(),
 			)
 		);
 
@@ -520,7 +601,10 @@ class EngineTest extends TestCase {
 		$this->pinecone->method( 'query' )->willReturn(
 			array(
 				'matches' => array(
-					array( 'id' => 'venue-1', 'score' => 0.9 ),
+					array(
+						'id'    => 'venue-1',
+						'score' => 0.9,
+					),
 				),
 			)
 		);
@@ -550,8 +634,8 @@ class EngineTest extends TestCase {
 
 		$result = $this->engine->generate_itinerary(
 			array(
-				'nonce'       => 'good_token',
-				'interests'   => array(),
+				'nonce'     => 'good_token',
+				'interests' => array(),
 			)
 		);
 

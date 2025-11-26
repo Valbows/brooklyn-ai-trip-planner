@@ -3,20 +3,21 @@
  * Based on Figma Design
  */
 
-@import url('https://fonts.googleapis.com/css2?family=Archivo:ital,wght@0,400;0,700;1,400&family=Oswald:wght@400;600&display=swap');
+@use "sass:color";
+@import url(https://fonts.googleapis.com/css2?family=Archivo:ital,wght@0,400;0,700;1,400&family=Oswald:wght@400;600&display=swap);
 
 // Variables
-$color-primary-orange: #F2AE01; // Brand Yellow/Orange
-$color-primary-blue: #1649FF;   // Brand Blue
-$color-bg-light: #D9D9D9;       // Brand Light Gray
-$color-text-dark: #2B2B2B;      // Brand Dark Gray
-$color-text-muted: #4A5568;
+$color-primary-orange: #f2ae01; // Brand Yellow/Orange
+$color-primary-blue: #1649ff;   // Brand Blue
+$color-bg-light: #d9d9d9;       // Brand Light Gray
+$color-text-dark: #2b2b2b;      // Brand Dark Gray
+$color-text-muted: #4a5568;
 $radius-card: 12px;
 $radius-btn: 8px;
 $shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
 
 .batp-container {
-	font-family: 'Oswald', system-ui, -apple-system, sans-serif;
+	font-family: Oswald, system-ui, -apple-system, sans-serif;
 	max-width: 1100px; // Wider container
 	margin: 0 auto;
 	color: $color-text-dark;
@@ -32,13 +33,13 @@ $shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.
 	margin-bottom: 2rem;
 
 	&__header {
-		background: linear-gradient(90deg, $color-primary-orange 0%, #FFFFFF 50%, $color-primary-blue 100%);
+		background: linear-gradient(90deg, $color-primary-orange 0%, #fff 50%, $color-primary-blue 100%);
 		padding: 2rem 2.5rem;
 		color: $color-text-dark; // Text needs to be dark on white center, or we adjust text color
 	}
 
 	&__title {
-		font-family: 'Archivo', sans-serif;
+		font-family: Archivo, sans-serif;
 		font-size: 1.75rem;
 		font-weight: 700;
 		margin: 0 0 0.5rem 0;
@@ -86,7 +87,7 @@ $shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.
 		gap: 0.5rem;
 		padding: 0.5rem 1rem;
 		background: #fff;
-		border: 1px solid #E2E8F0;
+		border: 1px solid #e2e8f0;
 		border-radius: 20px;
 		font-size: 0.9rem;
 		color: $color-text-dark;
@@ -95,8 +96,8 @@ $shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.
 		user-select: none;
 
 		&:hover {
-			background: #F7FAFC;
-			border-color: #CBD5E0;
+			background: #f7fafc;
+			border-color: #cbd5e0;
 		}
 
 		&.is-selected {
@@ -123,18 +124,19 @@ $shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.
 
 	&__input-group {
 		position: relative;
-		
-		input, select {
+
+		input,
+		select {
 			width: 100%;
 			padding: 0.75rem 1rem 0.75rem 2.5rem; // Space for icon
-			border: 1px solid #E2E8F0;
+			border: 1px solid #e2e8f0;
 			border-radius: $radius-btn;
 			font-size: 1rem;
-			background: #F8FAFC;
+			background: #f8fafc;
 			color: $color-text-dark;
 			box-sizing: border-box;
 			height: 48px;
-			font-family: 'Oswald', sans-serif; // Ensure input font matches
+			font-family: Oswald, sans-serif; // Ensure input font matches
 
 			&:focus {
 				outline: none;
@@ -162,9 +164,9 @@ $shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.
 		text-transform: uppercase; // Style choice for Oswald
 
 		&:hover {
-			background: darken($color-primary-blue, 5%);
+			background: color.scale($color-primary-blue, $lightness: -5%);
 		}
-		
+
 		&:disabled {
 			opacity: 0.7;
 			cursor: wait;
@@ -194,7 +196,7 @@ $shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.
 		font-size: 1.5rem;
 		margin: 0 0 0.25rem 0;
 		font-weight: 700;
-		font-family: 'Archivo', sans-serif;
+		font-family: Archivo, sans-serif;
 		text-transform: uppercase;
 	}
 
@@ -215,7 +217,7 @@ $shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.
 		padding: 0.5rem 1rem;
 		font-size: 0.9rem;
 		font-weight: 500;
-		border: 1px solid #E2E8F0;
+		border: 1px solid #e2e8f0;
 		background: #fff;
 		border-radius: 6px;
 		color: $color-text-dark;
@@ -223,17 +225,17 @@ $shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.
 		text-decoration: none;
 
 		&:hover {
-			background: #F7FAFC;
-			border-color: #CBD5E0;
+			background: #f7fafc;
+			border-color: #cbd5e0;
 		}
 
 		&--primary {
 			background: $color-primary-blue; // Blue
 			color: #fff; // White text
 			border-color: $color-primary-blue;
-			
+
 			&:hover {
-				background: darken($color-primary-blue, 5%);
+				background: color.scale($color-primary-blue, $lightness: -5%);
 			}
 		}
 	}
@@ -242,7 +244,7 @@ $shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.
 // TABS
 .batp-tabs {
 	background: #fff;
-	border: 1px solid #E2E8F0;
+	border: 1px solid #e2e8f0;
 	border-radius: 8px;
 	display: inline-flex;
 	padding: 4px;
@@ -259,7 +261,7 @@ $shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.
 		cursor: pointer;
 
 		&.is-active {
-			background: #EDF2F7;
+			background: #edf2f7;
 			color: $color-text-dark;
 			font-weight: 600;
 		}
@@ -269,7 +271,10 @@ $shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.
 // CONTENT VIEW (List vs Map)
 .batp-view-content {
 	display: none;
-	&.is-active { display: block; }
+
+	&.is-active {
+		display: block;
+	}
 }
 
 // SCROLL CONTAINER FOR LIST
@@ -277,19 +282,24 @@ $shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.
 	max-height: 600px;
 	overflow-y: auto;
 	padding-right: 0.5rem; // Space for scrollbar
-	
+
 	// Custom Scrollbar
 	&::-webkit-scrollbar {
 		width: 8px;
 	}
+
 	&::-webkit-scrollbar-track {
-		background: #F7FAFC;
+		background: #f7fafc;
 		border-radius: 4px;
 	}
+
 	&::-webkit-scrollbar-thumb {
-		background: #CBD5E0;
+		background: #cbd5e0;
 		border-radius: 4px;
-		&:hover { background: #A0AEC0; }
+
+		&:hover {
+			background: #a0aec0;
+		}
 	}
 }
 
@@ -303,10 +313,10 @@ $shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.
 
 .batp-card {
 	background: #fff;
-	border: 1px solid #E2E8F0;
+	border: 1px solid #e2e8f0;
 	border-radius: $radius-card;
 	padding: 1.5rem;
-	box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 	display: flex;
 	flex-direction: column;
 	gap: 1rem;
@@ -314,9 +324,9 @@ $shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.
 
 	&:hover {
 		transform: translateY(-2px);
-		box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+		box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
 	}
-	
+
 	&__header {
 		display: flex;
 		justify-content: space-between;
@@ -324,20 +334,20 @@ $shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.
 	}
 
 	&__title {
-		font-family: 'Archivo', sans-serif;
+		font-family: Archivo, sans-serif;
 		font-size: 1.25rem;
 		font-weight: 700;
 		margin: 0 0 0.25rem 0;
 		color: $color-text-dark;
 		text-transform: uppercase;
 	}
-	
+
 	&__tag {
 		font-size: 0.75rem;
 		text-transform: uppercase;
 		font-weight: 600;
 		color: $color-text-muted;
-		background: #F7FAFC;
+		background: #f7fafc;
 		padding: 0.25rem 0.5rem;
 		border-radius: 4px;
 	}
@@ -347,7 +357,7 @@ $shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.
 		font-size: 0.75rem;
 		font-weight: 600;
 		color: $color-text-dark; // Dark text on yellow
-		background: $color-primary-orange; 
+		background: $color-primary-orange;
 		padding: 0.15rem 0.5rem;
 		border-radius: 4px;
 		margin-bottom: 0.5rem;
@@ -355,7 +365,7 @@ $shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.
 
 	&__description {
 		font-size: 0.95rem;
-		color: #4A5568;
+		color: #4a5568;
 		line-height: 1.5;
 	}
 
@@ -376,7 +386,7 @@ $shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.
 	&__footer {
 		margin-top: auto;
 		padding-top: 1rem;
-		border-top: 1px solid #EDF2F7;
+		border-top: 1px solid #edf2f7;
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
@@ -394,13 +404,14 @@ $shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.
 		text-transform: uppercase; // Oswald style
 
 		&:hover {
-			background: darken($color-primary-orange, 5%);
+			background: color.scale($color-primary-orange, $lightness: -5%);
 		}
 	}
-	
+
 	&__links {
 		display: flex;
 		gap: 1rem;
+
 		a {
 			color: $color-text-dark;
 			text-decoration: none;
@@ -408,7 +419,10 @@ $shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.
 			display: flex;
 			align-items: center;
 			gap: 0.25rem;
-			&:hover { text-decoration: underline; }
+
+			&:hover {
+				text-decoration: underline;
+			}
 		}
 	}
 }
@@ -420,141 +434,262 @@ $shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.
 	min-height: 500px;
 	border-radius: $radius-card;
 	overflow: hidden;
-	border: 1px solid #E2E8F0;
-	background: #F7FAFC; // Placeholder bg
+	border: 1px solid #e2e8f0;
+	background: #f7fafc; // Placeholder bg
 }
 
 // MODAL STYLES
 .batp-modal {
-    position: fixed;
-    top: 0; left: 0; width: 100%; height: 100%;
-    z-index: 9999;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.3s;
-    
-    &.is-open {
-        opacity: 1;
-        pointer-events: auto;
-    }
+	position: fixed;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	z-index: 9999;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity 0.3s;
 
-    &__overlay {
-        position: absolute;
-        top: 0; left: 0; width: 100%; height: 100%;
-        background: rgba(0,0,0,0.5);
-    }
+	&.is-open {
+		opacity: 1;
+		pointer-events: auto;
+	}
 
-    &__content {
-        position: relative;
-        background: #fff;
-        border-radius: $radius-card;
-        width: 90%;
-        max-width: 600px;
-        box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1);
-        padding: 2rem;
-        max-height: 90vh;
-        overflow-y: auto;
-        z-index: 2;
-        
-        &--sm { max-width: 400px; }
-    }
+	&__overlay {
+		position: absolute;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
+		background: rgba(0, 0, 0, 0.5);
+	}
 
-    &__header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 1.5rem;
-        
-        h3 { 
-            margin: 0; font-family: 'Archivo', sans-serif; font-size: 1.25rem; 
-            text-transform: uppercase; color: $color-text-dark;
-        }
-    }
+	&__content {
+		position: relative;
+		background: #fff;
+		border-radius: $radius-card;
+		width: 90%;
+		max-width: 600px;
+		box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+		padding: 2rem;
+		max-height: 90vh;
+		overflow-y: auto;
+		z-index: 2;
 
-    &__close {
-        background: transparent; border: none; font-size: 1.5rem;
-        cursor: pointer; color: $color-text-muted;
-        &:hover { color: $color-text-dark; }
-    }
-    
-    &__subtitle {
-        margin-top: -1rem; margin-bottom: 1.5rem; color: $color-text-muted; font-size: 0.9rem;
-    }
-    
-    h4 {
-        font-family: 'Archivo', sans-serif; text-transform: uppercase; font-size: 0.9rem;
-        color: $color-text-dark; margin: 1.5rem 0 0.5rem 0;
-    }
+		&--sm {
+			max-width: 400px;
+		}
+	}
+
+	&__header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 1.5rem;
+
+		h3 {
+			margin: 0;
+			font-family: Archivo, sans-serif;
+			font-size: 1.25rem;
+			text-transform: uppercase;
+			color: $color-text-dark;
+		}
+	}
+
+	&__close {
+		background: transparent;
+		border: none;
+		font-size: 1.5rem;
+		cursor: pointer;
+		color: $color-text-muted;
+
+		&:hover {
+			color: $color-text-dark;
+		}
+	}
+
+	&__subtitle {
+		margin-top: -1rem;
+		margin-bottom: 1.5rem;
+		color: $color-text-muted;
+		font-size: 0.9rem;
+	}
+
+	h4 {
+		font-family: Archivo, sans-serif;
+		text-transform: uppercase;
+		font-size: 0.9rem;
+		color: $color-text-dark;
+		margin: 1.5rem 0 0.5rem 0;
+	}
 }
 
 // SHARE GRID
 .batp-share-grid {
-    display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: 1rem;
 }
 
 .batp-share-btn {
-    display: flex; align-items: center; gap: 1rem;
-    padding: 1rem; border: 1px solid #E2E8F0; border-radius: 8px;
-    background: #fff; cursor: pointer; text-align: left;
-    
-    &:hover { border-color: $color-primary-orange; }
+	display: flex;
+	align-items: center;
+	gap: 1rem;
+	padding: 1rem;
+	border: 1px solid #e2e8f0;
+	border-radius: 8px;
+	background: #fff;
+	cursor: pointer;
+	text-align: left;
 
-    .dashicons { font-size: 1.5rem; width: auto; height: auto; color: $color-primary-orange; }
-    
-    &__text {
-        display: flex; flex-direction: column;
-        strong { display: block; font-size: 0.9rem; color: $color-text-dark; }
-        span { font-size: 0.75rem; color: $color-text-muted; }
-    }
+	&:hover {
+		border-color: $color-primary-orange;
+	}
+
+	.dashicons {
+		font-size: 1.5rem;
+		width: auto;
+		height: auto;
+		color: $color-primary-orange;
+	}
+
+	&__text {
+		display: flex;
+		flex-direction: column;
+
+		strong {
+			display: block;
+			font-size: 0.9rem;
+			color: $color-text-dark;
+		}
+
+		span {
+			font-size: 0.75rem;
+			color: $color-text-muted;
+		}
+	}
 }
 
 // COPY LINK
 .batp-copy-row {
-    display: flex; gap: 0.5rem; margin-bottom: 1rem;
+	display: flex;
+	gap: 0.5rem;
+	margin-bottom: 1rem;
 }
+
 .batp-copy-input {
-    flex: 1; padding: 0.5rem; border: 1px solid #E2E8F0; border-radius: 6px; background: #F8FAFC;
-    font-family: monospace; color: $color-text-muted;
+	flex: 1;
+	padding: 0.5rem;
+	border: 1px solid #e2e8f0;
+	border-radius: 6px;
+	background: #f8fafc;
+	font-family: monospace;
+	color: $color-text-muted;
 }
+
 .batp-btn-copy {
-    background: $color-primary-blue; color: #fff; border: none;
-    border-radius: 6px; padding: 0 1rem; font-weight: 600; cursor: pointer;
-    &:hover { background: darken($color-primary-blue, 5%); }
+	background: $color-primary-blue;
+	color: #fff;
+	border: none;
+	border-radius: 6px;
+	padding: 0 1rem;
+	font-weight: 600;
+	cursor: pointer;
+
+	&:hover {
+		background: color.scale($color-primary-blue, $lightness: -5%);
+	}
 }
 
 // SHARE ACTIONS
 .batp-share-actions {
-    display: flex; gap: 1rem; margin-bottom: 1.5rem;
-    button {
-        flex: 1; padding: 0.75rem; border: 1px solid #E2E8F0; background: #fff;
-        border-radius: 6px; cursor: pointer; display: flex; align-items: center;
-        justify-content: center; gap: 0.5rem; font-weight: 600;
-        &:hover { background: #F7FAFC; }
-    }
+	display: flex;
+	gap: 1rem;
+	margin-bottom: 1.5rem;
+
+	button {
+		flex: 1;
+		padding: 0.75rem;
+		border: 1px solid #e2e8f0;
+		background: #fff;
+		border-radius: 6px;
+		cursor: pointer;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.5rem;
+		font-weight: 600;
+
+		&:hover {
+			background: #f7fafc;
+		}
+	}
 }
 
 // SUMMARY
 .batp-itinerary-summary-box {
-    background: #F7FAFC; padding: 1rem; border-radius: 8px;
-    ul { list-style: none; padding: 0; margin: 0; font-size: 0.9rem; color: $color-text-muted; }
-    li { margin-bottom: 0.25rem; &::before { content: '• '; color: $color-primary-orange; } }
+	background: #f7fafc;
+	padding: 1rem;
+	border-radius: 8px;
+
+	ul {
+		list-style: none;
+		padding: 0;
+		margin: 0;
+		font-size: 0.9rem;
+		color: $color-text-muted;
+	}
+
+	li {
+		margin-bottom: 0.25rem;
+
+		&::before {
+			content: "• ";
+			color: $color-primary-orange;
+		}
+	}
 }
 
 // FILTER CHECKBOXES
 .batp-checkbox-row {
-    display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem;
-    border: 1px solid #E2E8F0; border-radius: 8px; margin-bottom: 0.5rem;
-    cursor: pointer;
-    &:hover { background: #F7FAFC; }
-    input[type="checkbox"] { width: 1.2rem; height: 1.2rem; }
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+	padding: 0.75rem;
+	border: 1px solid #e2e8f0;
+	border-radius: 8px;
+	margin-bottom: 0.5rem;
+	cursor: pointer;
+
+	&:hover {
+		background: #f7fafc;
+	}
+
+	input[type="checkbox"] {
+		width: 1.2rem;
+		height: 1.2rem;
+	}
 }
 
-.batp-btn-full { width: 100%; margin-top: 1rem; }
+.batp-btn-full {
+	width: 100%;
+	margin-top: 1rem;
+}
+
 .batp-btn-primary {
-    background: $color-primary-blue; color: #fff; border: none; padding: 1rem;
-    border-radius: 8px; font-weight: 600; cursor: pointer; text-transform: uppercase;
-    &:hover { background: darken($color-primary-blue, 5%); }
+	background: $color-primary-blue;
+	color: #fff;
+	border: none;
+	padding: 1rem;
+	border-radius: 8px;
+	font-weight: 600;
+	cursor: pointer;
+	text-transform: uppercase;
+
+	&:hover {
+		background: color.scale($color-primary-blue, $lightness: -5%);
+	}
 }

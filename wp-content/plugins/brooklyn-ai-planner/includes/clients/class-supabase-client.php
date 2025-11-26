@@ -190,6 +190,76 @@ class Supabase_Client {
 	}
 
 	/**
+	 * Deletes rows matching conditions.
+	 *
+	 * @param string               $table      Table name.
+	 * @param array<string, mixed> $conditions Key-value pairs for equality check.
+	 * @return array<mixed>|WP_Error
+	 */
+	public function delete( string $table, array $conditions ) {
+		if ( empty( $conditions ) ) {
+			return new WP_Error( 'batp_supabase_delete_unsafe', 'Delete requires conditions.' );
+		}
+
+		$query_args = array();
+		foreach ( $conditions as $col => $val ) {
+			$query_args[ $col ] = 'eq.' . $val;
+		}
+
+		$query = http_build_query( $query_args, '', '&', PHP_QUERY_RFC3986 );
+		$path  = sprintf( '/rest/v1/%s?%s', urlencode( $table ), $query );
+
+		return $this->request(
+			'DELETE',
+			$path,
+			array(
+				'headers' => array( 'Prefer' => 'return=representation' ),
+			)
+		);
+	}
+
+	/**
+	 * Calls a Postgres function via RPC.
+	 *
+	 * @param string               $function Function name.
+	 * @param array<string, mixed> $params   Function arguments.
+	 * @return array<mixed>|WP_Error
+	 */
+	public function rpc( string $function, array $params = array() ) {
+		return $this->request(
+			'POST',
+			'/rest/v1/rpc/' . urlencode( $function ),
+			array(
+				'body' => wp_json_encode( $params ),
+			)
+		);
+	}
+
+	/**
+	 * Trigger the MBA Association Rules generation via RPC.
+	 *
+	 * @param float $min_support
+	 * @param float $min_confidence
+	 * @param float $min_lift
+	 * @return array<string, mixed>|WP_Error
+	 */
+	public function run_mba_job( float $min_support = 0.005, float $min_confidence = 0.1, float $min_lift = 1.2 ) {
+		$payload = array(
+			'min_support'    => $min_support,
+			'min_confidence' => $min_confidence,
+			'min_lift'       => $min_lift,
+		);
+
+		return $this->request(
+			'POST',
+			'/rest/v1/rpc/generate_association_rules',
+			array(
+				'body' => wp_json_encode( $payload ),
+			)
+		);
+	}
+
+	/**
 	 * Lightweight health-check query for diagnostics.
 	 *
 	 * @return array<string, mixed>|WP_Error
@@ -229,10 +299,10 @@ class Supabase_Client {
 		$response = wp_remote_request(
 			$url,
 			array(
-				'method'  => $method,
-				'headers' => $args['headers'],
-				'timeout' => $args['timeout'],
-				'body'    => $args['body'] ?? null,
+				'method'    => $method,
+				'headers'   => $args['headers'],
+				'timeout'   => $args['timeout'],
+				'body'      => $args['body'] ?? null,
 				'sslverify' => false, // TEMP FIX: Disable SSL verify to rule out cert issues in dev
 			)
 		);

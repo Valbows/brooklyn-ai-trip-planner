@@ -7,5 +7,7 @@ parameters:
         - brooklyn-ai-planner.php
         - includes
         - admin
+    scanFiles:
+        - vendor/php-stubs/wordpress-stubs/wordpress-stubs.php
     bootstrapFiles:
         - phpstan-bootstrap.php

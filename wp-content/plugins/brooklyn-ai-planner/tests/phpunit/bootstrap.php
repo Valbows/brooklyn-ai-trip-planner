@@ -211,6 +211,34 @@ if ( ! function_exists( 'wp_remote_retrieve_body' ) ) {
 	}
 }
 
+if ( ! function_exists( 'get_current_user_id' ) ) {
+	function get_current_user_id() {
+		return 1;
+	}
+}
+
+if ( ! function_exists( 'get_option' ) ) {
+	function get_option( $option, $default = false ) {
+		// Simple mock store
+		global $batp_test_options;
+		return isset( $batp_test_options[ $option ] ) ? $batp_test_options[ $option ] : $default;
+	}
+}
+
+if ( ! function_exists( 'update_option' ) ) {
+	function update_option( $option, $value, $autoload = null ) {
+		global $batp_test_options;
+		$batp_test_options[ $option ] = $value;
+		return true;
+	}
+}
+
+if ( ! function_exists( 'is_wp_error' ) ) {
+	function is_wp_error( $thing ) {
+		return $thing instanceof WP_Error;
+	}
+}
+
 Monkey\setUp();
 echo "Monkey setup complete\n";
 register_shutdown_function(

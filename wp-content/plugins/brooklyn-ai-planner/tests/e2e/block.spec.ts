@@ -8,11 +8,11 @@ test( 'Block should insert and render in editor', async ( { page } ) => {
 	if ( await page.locator( '#user_login' ).isVisible() ) {
 		const username = process.env.WP_USERNAME || 'admin';
 		const password = process.env.WP_PASSWORD || 'password';
-		
+
 		await page.fill( '#user_login', username );
 		await page.fill( '#user_pass', password );
 		await page.click( '#wp-submit' );
-		
+
 		// Check for login error
 		const error = page.locator( '#login_error' );
 		if ( await error.isVisible() ) {

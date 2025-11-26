@@ -109,14 +109,14 @@ class Security_Manager {
 		return sanitize_text_field( $ip );
 	}
 
-	private function resolve_env_int( string $env_key, int $default ): int {
+	private function resolve_env_int( string $env_key, int $default_value ): int {
 		$value = getenv( $env_key );
 		if ( false === $value ) {
-			return $default;
+			return $default_value;
 		}
 
 		$int_value = (int) $value;
-		return $int_value >= 0 ? $int_value : $default;
+		return $int_value >= 0 ? $int_value : $default_value;
 	}
 
 	/**

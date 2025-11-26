@@ -84,7 +84,10 @@ export default function Edit( { attributes, setAttributes } ) {
 					] }
 				/>
 			</InspectorControls>
-			<div { ...blockProps } style={ { '--batp-highlight-color': highlightColor } }>
+			<div
+				{ ...blockProps }
+				style={ { '--batp-highlight-color': highlightColor } }
+			>
 				<RichText
 					tagName="h2"
 					className="batp-itinerary-block__heading"

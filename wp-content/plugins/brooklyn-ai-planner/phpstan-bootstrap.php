@@ -1,5 +1,9 @@
 <?php
 // Minimal stubs so PHPStan understands WordPress constants/functions.
+if ( ! class_exists( 'WP_CLI_Command' ) ) {
+	class WP_CLI_Command {}
+}
+
 if ( ! defined( 'ABSPATH' ) ) {
 	define( 'ABSPATH', __DIR__ . '/' );
 }

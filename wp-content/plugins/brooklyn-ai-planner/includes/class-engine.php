@@ -26,13 +26,13 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 class Engine {
-	private const VENUE_SELECT_FIELDS   = 'slug,name,borough,categories,latitude,longitude,budget,vibe_summary,is_sbrn_member,accessibility,website,phone,address,hours';
-	private const MBA_SELECT_FIELDS     = 'seed_slug,recommendation_slug,lift,confidence';
-	private const MBA_MAX_SEEDS         = 5;
-	private const MBA_MIN_LIFT          = 1.2;
-	private const SBRN_BOOST            = 1.2;
-	private const LLM_MAX_CANDIDATES    = 12;
-	private const LLM_PROMPT_VERSION    = 'v1';
+	private const VENUE_SELECT_FIELDS = 'slug,name,borough,categories,latitude,longitude,budget,vibe_summary,is_sbrn_member,accessibility,website,phone,address,hours';
+	private const MBA_SELECT_FIELDS   = 'seed_slug,recommendation_slug,lift,confidence';
+	private const MBA_MAX_SEEDS       = 5;
+	private const MBA_MIN_LIFT        = 1.2;
+	private const SBRN_BOOST          = 1.2;
+	private const LLM_MAX_CANDIDATES  = 12;
+	private const LLM_PROMPT_VERSION  = 'v1';
 
 	private Security_Manager $security;
 	private Cache_Service $cache;
@@ -116,7 +116,7 @@ class Engine {
 			$this->log_stage_error( 'mba', $boosted );
 			// Non-fatal error: Log it and proceed with original candidates
 			error_log( 'BATP: MBA Boost failed (non-fatal): ' . $boosted->get_error_message() );
-			$candidates = $candidates; 
+			$candidates = $candidates;
 		} else {
 			$candidates = $boosted;
 			$this->log_stage_success( 'mba', array( 'count' => count( $candidates ) ) );
@@ -262,8 +262,8 @@ class Engine {
 
 			return $results;
 		}
-		
-		error_log( 'BATP: Pinecone query raw match count: ' . count( $results['matches'] ?? [] ) );
+
+		error_log( 'BATP: Pinecone query raw match count: ' . count( $results['matches'] ?? array() ) );
 
 		$matches = $results['matches'] ?? array();
 		if ( empty( $matches ) ) {
@@ -295,7 +295,7 @@ class Engine {
 
 		$unique_slugs = array_values( array_unique( $slugs ) );
 		error_log( 'BATP: Unique slugs from Pinecone: ' . implode( ', ', $unique_slugs ) );
-		$records      = $this->load_venues_by_slugs( $unique_slugs );
+		$records = $this->load_venues_by_slugs( $unique_slugs );
 		if ( is_wp_error( $records ) ) {
 			error_log( 'BATP: Supabase load venues error: ' . $records->get_error_message() );
 			return $records;
@@ -312,9 +312,9 @@ class Engine {
 			$data = $this->venue_cache[ $slug ] ?? array( 'slug' => $slug );
 
 			$candidates[] = array(
-				'slug'  => $slug,
-				'score' => $match['score'],
-				'data'  => $data,
+				'slug'    => $slug,
+				'score'   => $match['score'],
+				'data'    => $data,
 				'sources' => array( 'kmeans' ),
 			);
 		}
@@ -461,14 +461,14 @@ class Engine {
 		$combined = array();
 
 		foreach ( $seed as $candidate ) {
-			$slug = $candidate['slug'];
+			$slug              = $candidate['slug'];
 			$combined[ $slug ] = $candidate;
 		}
 
 		foreach ( $semantic as $candidate ) {
 			$slug = $candidate['slug'];
 			if ( isset( $combined[ $slug ] ) ) {
-				$combined[ $slug ]['score'] = $this->combine_scores( $combined[ $slug ]['score'], $candidate['score'] );
+				$combined[ $slug ]['score']   = $this->combine_scores( $combined[ $slug ]['score'], $candidate['score'] );
 				$combined[ $slug ]['sources'] = array_values( array_unique( array_merge( $combined[ $slug ]['sources'], $candidate['sources'] ) ) );
 				continue;
 			}
@@ -518,17 +518,17 @@ class Engine {
 		foreach ( $candidates as &$candidate ) {
 			$slug = $candidate['slug'] ?? '';
 			if ( isset( $indexed_rules[ $slug ] ) ) {
-				$boost = $indexed_rules[ $slug ];
-				$candidate['score'] = $this->apply_lift( $candidate['score'] ?? null, $boost['lift'] );
-				$existing_sources      = isset( $candidate['sources'] ) && is_array( $candidate['sources'] ) ? $candidate['sources'] : array();
-				$candidate['sources']  = array_values( array_unique( array_merge( $existing_sources, array( 'mba' ) ) ) );
-				$meta                  = isset( $candidate['meta'] ) && is_array( $candidate['meta'] ) ? $candidate['meta'] : array();
-				$meta['mba']           = array(
+				$boost                = $indexed_rules[ $slug ];
+				$candidate['score']   = $this->apply_lift( $candidate['score'] ?? null, $boost['lift'] );
+				$existing_sources     = isset( $candidate['sources'] ) && is_array( $candidate['sources'] ) ? $candidate['sources'] : array();
+				$candidate['sources'] = array_values( array_unique( array_merge( $existing_sources, array( 'mba' ) ) ) );
+				$meta                 = isset( $candidate['meta'] ) && is_array( $candidate['meta'] ) ? $candidate['meta'] : array();
+				$meta['mba']          = array(
 					'seed'       => $boost['seed'],
 					'lift'       => $boost['lift'],
 					'confidence' => $boost['confidence'],
 				);
-				$candidate['meta'] = $meta;
+				$candidate['meta']    = $meta;
 			}
 		}
 		unset( $candidate );
@@ -634,8 +634,8 @@ class Engine {
 	 * @return array<int, array<string, mixed>>|WP_Error
 	 */
 	private function stage_filters_and_constraints( array $request, array $candidates ) {
-		$result = $this->apply_budget_filter( $request, $candidates );
-		$result = $this->apply_accessibility_filter( $request, $result );
+		$result   = $this->apply_budget_filter( $request, $candidates );
+		$result   = $this->apply_accessibility_filter( $request, $result );
 		$distance = $this->apply_distance_constraint( $request, $result );
 		if ( is_wp_error( $distance ) ) {
 			return $distance;
@@ -702,7 +702,7 @@ class Engine {
 			array_filter(
 				$candidates,
 				function ( $candidate ) use ( $preferences ) {
-					$data = isset( $candidate['data']['accessibility'] ) ? $candidate['data']['accessibility'] : array();
+					$data       = isset( $candidate['data']['accessibility'] ) ? $candidate['data']['accessibility'] : array();
 					$attributes = $this->sanitize_string_array( (array) $data );
 					if ( empty( $attributes ) ) {
 						return false;
@@ -763,9 +763,9 @@ class Engine {
 				if ( $minutes > $max_minutes ) {
 					continue;
 				}
-				$meta                      = isset( $candidate['meta'] ) && is_array( $candidate['meta'] ) ? $candidate['meta'] : array();
-				$meta['travel_minutes']     = $minutes;
-				$candidate['meta']         = $meta;
+				$meta                   = isset( $candidate['meta'] ) && is_array( $candidate['meta'] ) ? $candidate['meta'] : array();
+				$meta['travel_minutes'] = $minutes;
+				$candidate['meta']      = $meta;
 			}
 
 			$filtered[] = $candidate;
@@ -821,7 +821,7 @@ class Engine {
 			return $cached;
 		}
 
-		$origin_string = sprintf( '%f,%f', $origin['lat'], $origin['lng'] );
+		$origin_string      = sprintf( '%f,%f', $origin['lat'], $origin['lng'] );
 		$destination_string = implode(
 			'|',
 			array_map(
@@ -860,7 +860,7 @@ class Engine {
 				continue;
 			}
 
-			$slug              = $destinations[ $index ]['slug'];
+			$slug               = $destinations[ $index ]['slug'];
 			$durations[ $slug ] = (int) ceil( $seconds / 60 );
 		}
 
@@ -885,9 +885,9 @@ class Engine {
 				continue;
 			}
 
-			$candidate['score'] = ( $candidate['score'] ?? 1 ) * self::SBRN_BOOST;
-			$existing_sources    = isset( $candidate['sources'] ) && is_array( $candidate['sources'] ) ? $candidate['sources'] : array();
-			$existing_sources[]  = 'sbrn';
+			$candidate['score']   = ( $candidate['score'] ?? 1 ) * self::SBRN_BOOST;
+			$existing_sources     = isset( $candidate['sources'] ) && is_array( $candidate['sources'] ) ? $candidate['sources'] : array();
+			$existing_sources[]   = 'sbrn';
 			$candidate['sources'] = array_values( array_unique( $existing_sources ) );
 		}
 		unset( $candidate );
@@ -911,8 +911,8 @@ class Engine {
 					'meta'  => array(),
 				),
 				'meta'       => array(
-					'prompt_version' => self::LLM_PROMPT_VERSION,
-					'cached'         => false,
+					'prompt_version'  => self::LLM_PROMPT_VERSION,
+					'cached'          => false,
 					'candidate_count' => 0,
 				),
 			);
@@ -927,14 +927,14 @@ class Engine {
 					'meta'  => array(),
 				),
 				'meta'       => array(
-					'prompt_version' => self::LLM_PROMPT_VERSION,
-					'cached'         => false,
+					'prompt_version'  => self::LLM_PROMPT_VERSION,
+					'cached'          => false,
 					'candidate_count' => count( $candidates ),
 				),
 			);
 		}
 
-		$context  = $this->build_llm_context( $request, $prepared );
+		$context   = $this->build_llm_context( $request, $prepared );
 		$cache_key = array(
 			'context' => $context,
 			'version' => self::LLM_PROMPT_VERSION,
@@ -994,7 +994,7 @@ class Engine {
 	 * @return array<int, array<string, mixed>>
 	 */
 	private function prepare_llm_candidates( array $candidates ): array {
-		$limited = array_slice( $candidates, 0, self::LLM_MAX_CANDIDATES );
+		$limited  = array_slice( $candidates, 0, self::LLM_MAX_CANDIDATES );
 		$prepared = array();
 
 		foreach ( $limited as $candidate ) {
@@ -1030,20 +1030,20 @@ class Engine {
 	 * @return array<string, mixed>
 	 */
 	private function build_llm_context( array $request, array $candidates ): array {
-		$interests      = $this->sanitize_string_array( (array) ( $request['interests'] ?? array() ) );
-		$accessibility  = isset( $request['accessibility_preferences'] ) ? $this->sanitize_string_array( (array) $request['accessibility_preferences'] ) : array();
-		$time_window    = isset( $request['time_window'] ) ? (int) $request['time_window'] : 240;
-		$max_travel     = $this->max_travel_minutes( $time_window );
-		$party_size     = isset( $request['party_size'] ) ? (int) $request['party_size'] : 2;
+		$interests     = $this->sanitize_string_array( (array) ( $request['interests'] ?? array() ) );
+		$accessibility = isset( $request['accessibility_preferences'] ) ? $this->sanitize_string_array( (array) $request['accessibility_preferences'] ) : array();
+		$time_window   = isset( $request['time_window'] ) ? (int) $request['time_window'] : 240;
+		$max_travel    = $this->max_travel_minutes( $time_window );
+		$party_size    = isset( $request['party_size'] ) ? (int) $request['party_size'] : 2;
 
 		return array(
 			'version'     => self::LLM_PROMPT_VERSION,
 			'profile'     => array(
-				'interests'   => $interests,
-				'budget'      => sanitize_text_field( (string) ( $request['budget'] ?? 'medium' ) ),
-				'time_window' => $time_window,
+				'interests'     => $interests,
+				'budget'        => sanitize_text_field( (string) ( $request['budget'] ?? 'medium' ) ),
+				'time_window'   => $time_window,
 				'accessibility' => $accessibility,
-				'party_size'  => max( 1, $party_size ),
+				'party_size'    => max( 1, $party_size ),
 			),
 			'constraints' => array(
 				'max_travel_minutes' => $max_travel,
@@ -1075,8 +1075,8 @@ class Engine {
 				),
 			),
 			'generationConfig' => array(
-				'maxOutputTokens' => 768,
-				'temperature'     => 0.4,
+				'maxOutputTokens'  => 768,
+				'temperature'      => 0.4,
 				'responseMimeType' => 'application/json',
 			),
 		);
@@ -1163,9 +1163,9 @@ class Engine {
 				continue;
 			}
 
-			$candidate = $indexed[ $slug ];
-			$meta      = isset( $candidate['meta'] ) && is_array( $candidate['meta'] ) ? $candidate['meta'] : array();
-			$meta['llm'] = array(
+			$candidate            = $indexed[ $slug ];
+			$meta                 = isset( $candidate['meta'] ) && is_array( $candidate['meta'] ) ? $candidate['meta'] : array();
+			$meta['llm']          = array(
 				'title'            => $item['title'],
 				'order'            => $item['order'],
 				'arrival_minute'   => $item['arrival_minute'],

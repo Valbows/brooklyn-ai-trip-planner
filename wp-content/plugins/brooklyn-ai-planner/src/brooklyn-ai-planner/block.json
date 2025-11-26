@@ -7,14 +7,10 @@
 	"category": "widgets",
 	"icon": "admin-site-alt3",
 	"description": "Collect preferred vibes, dates, and party size for the Brooklyn AI trip planner.",
-	"keywords": [
-		"brooklyn",
-		"ai",
-		"travel"
-	],
+	"keywords": [ "brooklyn", "ai", "travel" ],
 	"supports": {
 		"html": false,
-		"align": ["wide", "full"]
+		"align": [ "wide", "full" ]
 	},
 	"attributes": {
 		"heading": {
