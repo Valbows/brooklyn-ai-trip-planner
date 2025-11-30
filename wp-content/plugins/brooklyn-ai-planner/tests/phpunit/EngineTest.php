@@ -1,6 +1,6 @@
 <?php
 /**
- * Tests for Engine.
+ * Tests for Engine with Google Places API pipeline.
  *
  * @package BrooklynAI
  */
@@ -34,22 +34,29 @@ class EngineTest extends TestCase {
 	protected function setUp(): void {
 		parent::setUp();
 		\Brain\Monkey\setUp();
-		$this->security        = $this->createMock( Security_Manager::class );
-		$this->cache           = $this->createMock( Cache_Service::class );
-		$this->supabase        = $this->createMock( Supabase_Client::class );
-		$this->places          = $this->createMock( Google_Places_Client::class );
-		$this->directions      = $this->createMock( Google_Directions_Client::class );
-		$this->maps            = $this->createMock( GoogleMaps_Client::class );
-		$this->gemini          = $this->createMock( Gemini_Client::class );
-		$this->analytics       = $this->createMock( Analytics_Logger::class );
+
+		// Create mocks
+		$this->security   = $this->createMock( Security_Manager::class );
+		$this->cache      = $this->createMock( Cache_Service::class );
+		$this->supabase   = $this->createMock( Supabase_Client::class );
+		$this->places     = $this->createMock( Google_Places_Client::class );
+		$this->directions = $this->createMock( Google_Directions_Client::class );
+		$this->maps       = $this->createMock( GoogleMaps_Client::class );
+		$this->gemini     = $this->createMock( Gemini_Client::class );
+		$this->analytics  = $this->createMock( Analytics_Logger::class );
+
+		// Default: security passes, no cache
+		$this->security->method( 'enforce_rate_limit' )->willReturn( true );
+		$this->cache->method( 'get' )->willReturn( false );
+		// cache->set() returns void, no need to mock return value
+		$this->analytics->method( 'log' )->willReturn( true );
+
+		// Setup default gemini response
 		$this->gemini_response = $this->mock_llm_payload();
 		$this->gemini->method( 'generate_content' )
-			->willReturnCallback(
-				function () {
-					return $this->gemini_response;
-				}
-			);
+			->willReturnCallback( fn() => $this->gemini_response );
 
+		// Build engine with all dependencies
 		$this->engine = new Engine(
 			$this->security,
 			$this->cache,
@@ -67,590 +74,419 @@ class EngineTest extends TestCase {
 		parent::tearDown();
 	}
 
-	public function test_guardrails_invalid_nonce() {
-		// Mock WP nonce check failure
-		\Brain\Monkey\Functions\expect( 'wp_verify_nonce' )
-			->with( 'bad_token', 'batp_generate_itinerary' )
-			->andReturn( false );
-
-		$result = $this->engine->generate_itinerary( array( 'nonce' => 'bad_token' ) );
-
-		$this->assertInstanceOf( WP_Error::class, $result );
-		$this->assertEquals( 'batp_invalid_nonce', $result->get_error_code() );
-	}
+	// =========================================================================
+	// STAGE 0: GUARDRAILS TESTS
+	// =========================================================================
 
 	public function test_guardrails_rate_limit_exceeded() {
-		\Brain\Monkey\Functions\expect( 'wp_verify_nonce' )->andReturn( true );
+		$this->security = $this->createMock( Security_Manager::class );
+		$this->security->method( 'enforce_rate_limit' )
+			->willReturn( new WP_Error( 'batp_rate_limited', 'Rate limit exceeded' ) );
 
-		$this->security->method( 'enforce_rate_limit' )->willReturn( new WP_Error( 'batp_rate_limited', 'Limit exceeded' ) );
+		$engine = new Engine(
+			$this->security,
+			$this->cache,
+			$this->supabase,
+			$this->places,
+			$this->directions,
+			$this->maps,
+			$this->gemini,
+			$this->analytics
+		);
 
-		$result = $this->engine->generate_itinerary( array( 'nonce' => 'good_token' ) );
+		$result = $engine->generate_itinerary( array() );
 
 		$this->assertInstanceOf( WP_Error::class, $result );
 		$this->assertEquals( 'batp_rate_limited', $result->get_error_code() );
 	}
 
-	public function test_kmeans_lookup_success() {
-		\Brain\Monkey\Functions\expect( 'wp_verify_nonce' )->andReturn( true );
-		\Brain\Monkey\Functions\expect( 'wp_json_encode' )->andReturn( '{"hash":"123"}' );
-
-		$this->security->method( 'enforce_rate_limit' )->willReturn( true );
-		$this->cache->method( 'get' )->willReturn( false ); // No cache hit
-
-		// Mock Pinecone returning centroid/candidates
-		$this->pinecone->method( 'query' )->willReturn(
-			array(
-				'matches' => array(
-					array(
-						'id'    => 'venue-1',
-						'score' => 0.9,
-					),
-					array(
-						'id'    => 'venue-2',
-						'score' => 0.8,
-					),
-				),
-			)
-		);
-
-		$this->supabase->expects( $this->exactly( 2 ) )
-			->method( 'select_in' )
-			->willReturnCallback(
-				function ( $table, $column, $values ) {
-					if ( 'venues' === $table ) {
-						return array(
-							array(
-								'slug' => 'venue-1',
-								'name' => 'Venue One',
-							),
-							array(
-								'slug' => 'venue-2',
-								'name' => 'Venue Two',
-							),
-						);
-					}
-
-					return array();
-				}
-			);
-
+	public function test_guardrails_invalid_location_outside_nyc() {
 		$result = $this->engine->generate_itinerary(
 			array(
-				'nonce'       => 'good_token',
-				'interests'   => array(), // Skip Stage 2 for deterministic test
-				'time_window' => 120,
-			)
-		);
-
-		$this->assertIsArray( $result );
-		$this->assertEquals( 'partial', $result['status'] );
-		$this->assertCount( 2, $result['candidates'] );
-		$this->assertEquals( 'venue-1', $result['candidates'][0]['slug'] );
-		$this->assertEquals( 'Venue One', $result['candidates'][0]['data']['name'] );
-	}
-
-	public function test_kmeans_lookup_supabase_error() {
-		\Brain\Monkey\Functions\expect( 'wp_verify_nonce' )->andReturn( true );
-		$this->security->method( 'enforce_rate_limit' )->willReturn( true );
-		$this->cache->method( 'get' )->willReturn( false );
-
-		$this->pinecone->method( 'query' )->willReturn(
-			array(
-				'matches' => array(
-					array(
-						'id'    => 'venue-1',
-						'score' => 0.9,
-					),
-				),
-			)
-		);
-
-		$this->supabase->method( 'select_in' )
-			->willReturnCallback(
-				function ( $table ) {
-					if ( 'venues' === $table ) {
-						return new WP_Error( 'batp_supabase_http_error', 'Supabase down' );
-					}
-
-					return array();
-				}
-			);
-
-		$result = $this->engine->generate_itinerary(
-			array(
-				'nonce' => 'good_token',
+				'lat' => 34.0522, // Los Angeles
+				'lng' => -118.2437,
 			)
 		);
 
 		$this->assertInstanceOf( WP_Error::class, $result );
-		$this->assertEquals( 'batp_supabase_http_error', $result->get_error_code() );
+		$this->assertEquals( 'batp_invalid_location', $result->get_error_code() );
 	}
 
-	public function test_filters_budget_enforced() {
-		\Brain\Monkey\Functions\expect( 'wp_verify_nonce' )->andReturn( true );
-		$this->security->method( 'enforce_rate_limit' )->willReturn( true );
-		$this->cache->method( 'get' )->willReturn( false );
-
-		$this->pinecone->method( 'query' )->willReturn(
-			array(
-				'matches' => array(
-					array(
-						'id'    => 'venue-1',
-						'score' => 0.9,
-					),
-					array(
-						'id'    => 'venue-2',
-						'score' => 0.8,
-					),
-				),
-			)
-		);
-
-		$this->supabase->method( 'select_in' )
-			->willReturnCallback(
-				function ( $table ) {
-					if ( 'venues' === $table ) {
-						return array(
-							array(
-								'slug'   => 'venue-1',
-								'name'   => 'Venue One',
-								'budget' => 'low',
-							),
-							array(
-								'slug'   => 'venue-2',
-								'name'   => 'Venue Two',
-								'budget' => 'high',
-							),
-						);
-					}
-
-					if ( 'association_rules' === $table ) {
-						return array();
-					}
-
-					return array();
-				}
-			);
+	public function test_guardrails_defaults_to_brooklyn_when_no_location() {
+		// Setup places to return venues
+		$this->places->method( 'nearby_search' )->willReturn( $this->mock_places_results() );
+		$this->places->method( 'get_details' )->willReturn( $this->mock_place_details() );
+		$this->directions->method( 'get_multi_stop_route' )->willReturn( $this->mock_directions() );
+		$this->directions->method( 'distance_matrix' )->willReturn( array() );
+		$this->directions->method( 'build_maps_url' )->willReturn( 'https://maps.google.com' );
 
 		$result = $this->engine->generate_itinerary(
 			array(
-				'nonce'     => 'good_token',
-				'interests' => array(),
-				'budget'    => 'low',
+				'interests' => array( 'food' ),
 			)
 		);
 
+		// Should not error - uses default Brooklyn location
 		$this->assertIsArray( $result );
-		$this->assertCount( 1, $result['candidates'] );
-		$this->assertEquals( 'venue-1', $result['candidates'][0]['slug'] );
-	}
-
-	public function test_filters_sbrn_boost_applied() {
-		\Brain\Monkey\Functions\expect( 'wp_verify_nonce' )->andReturn( true );
-		$this->security->method( 'enforce_rate_limit' )->willReturn( true );
-		$this->cache->method( 'get' )->willReturn( false );
-
-		$this->pinecone->method( 'query' )->willReturn(
-			array(
-				'matches' => array(
-					array(
-						'id'    => 'venue-1',
-						'score' => 0.9,
-					),
-					array(
-						'id'    => 'venue-2',
-						'score' => 0.8,
-					),
-				),
-			)
-		);
-
-		$this->supabase->method( 'select_in' )
-			->willReturnCallback(
-				function ( $table ) {
-					if ( 'venues' === $table ) {
-						return array(
-							array(
-								'slug'           => 'venue-1',
-								'name'           => 'Venue One',
-								'is_sbrn_member' => false,
-							),
-							array(
-								'slug'           => 'venue-2',
-								'name'           => 'Venue Two',
-								'is_sbrn_member' => true,
-							),
-						);
-					}
-
-					if ( 'association_rules' === $table ) {
-						return array();
-					}
-
-					return array();
-				}
-			);
-
-		$result = $this->engine->generate_itinerary(
-			array(
-				'nonce'     => 'good_token',
-				'interests' => array(),
-			)
-		);
-
-		$this->assertIsArray( $result );
-		$this->assertCount( 2, $result['candidates'] );
-		$this->assertGreaterThan( 0.8, $result['candidates'][1]['score'] );
-		$this->assertContains( 'sbrn', $result['candidates'][1]['sources'] );
-	}
-
-	public function test_semantic_embedding_cache_hit_skips_gemini_call() {
-		\Brain\Monkey\Functions\expect( 'wp_verify_nonce' )->andReturn( true );
-		$this->security->method( 'enforce_rate_limit' )->willReturn( true );
-		$this->cache->method( 'get' )
-			->willReturnOnConsecutiveCalls( false, array( 0.1, 0.2 ), false );
-
-		$this->pinecone->method( 'query' )->willReturn(
-			array(
-				'matches' => array(
-					array(
-						'id'       => 'venue-1',
-						'score'    => 0.99,
-						'metadata' => array(
-							'slug' => 'venue-1',
-							'name' => 'Venue One',
-						),
-					),
-				),
-			)
-		);
-
-		$this->supabase->method( 'select_in' )
-			->willReturnCallback(
-				function ( $table ) {
-					if ( 'venues' === $table ) {
-						return array(
-							array(
-								'slug' => 'venue-1',
-								'name' => 'Venue One',
-							),
-						);
-					}
-
-					if ( 'association_rules' === $table ) {
-						return array();
-					}
-
-					return array();
-				}
-			);
-
-		// Gemini embed_content should not be called because cache supplies embedding
-		$this->gemini->expects( $this->never() )->method( 'embed_content' );
-
-		$result = $this->engine->generate_itinerary(
-			array(
-				'nonce'     => 'good_token',
-				'interests' => array( 'Food' ),
-			)
-		);
-
-		$this->assertIsArray( $result );
-		$this->assertEquals( 'venue-1', $result['candidates'][0]['slug'] );
-		$this->assertContains( 'semantic', $result['candidates'][0]['sources'] );
-	}
-
-	public function test_semantic_embedding_failure_bubbles_error() {
-		\Brain\Monkey\Functions\expect( 'wp_verify_nonce' )->andReturn( true );
-		$this->security->method( 'enforce_rate_limit' )->willReturn( true );
-		$this->cache->method( 'get' )->willReturn( false );
-
-		$this->pinecone->method( 'query' )->willReturn( array( 'matches' => array() ) );
-		$this->supabase->method( 'select_in' )
-			->willReturnCallback(
-				function ( $table ) {
-					if ( 'venues' === $table ) {
-						return array( array( 'slug' => 'venue-1' ) );
-					}
-
-					if ( 'association_rules' === $table ) {
-						return array();
-					}
-
-					return array();
-				}
-			);
-
-		$this->gemini->method( 'embed_content' )
-			->willReturn( new WP_Error( 'batp_gemini_error', 'Embedding failed' ) );
-
-		$result = $this->engine->generate_itinerary(
-			array(
-				'nonce'     => 'good_token',
-				'interests' => array( 'Food' ),
-			)
-		);
-
-		$this->assertInstanceOf( WP_Error::class, $result );
-		$this->assertEquals( 'batp_gemini_error', $result->get_error_code() );
-	}
-
-	public function test_mba_boost_applied() {
-		\Brain\Monkey\Functions\expect( 'wp_verify_nonce' )->andReturn( true );
-		$this->security->method( 'enforce_rate_limit' )->willReturn( true );
-		$this->cache->method( 'get' )->willReturn( false );
-
-		$this->pinecone->method( 'query' )->willReturn(
-			array(
-				'matches' => array(
-					array(
-						'id'    => 'venue-1',
-						'score' => 0.9,
-					),
-					array(
-						'id'    => 'venue-2',
-						'score' => 0.8,
-					),
-				),
-			)
-		);
-
-		$this->supabase->method( 'select_in' )
-			->willReturnCallback(
-				function ( $table ) {
-					if ( 'venues' === $table ) {
-						return array(
-							array(
-								'slug' => 'venue-1',
-								'name' => 'Venue One',
-							),
-							array(
-								'slug' => 'venue-2',
-								'name' => 'Venue Two',
-							),
-						);
-					}
-
-					if ( 'association_rules' === $table ) {
-						return array(
-							array(
-								'seed_slug'           => 'venue-1',
-								'recommendation_slug' => 'venue-2',
-								'lift'                => 1.5,
-								'confidence'          => 0.7,
-							),
-						);
-					}
-
-					return array();
-				}
-			);
-
-		$result = $this->engine->generate_itinerary(
-			array(
-				'nonce'       => 'good_token',
-				'interests'   => array(),
-				'time_window' => 120,
-			)
-		);
-
-		$this->assertIsArray( $result );
-		$this->assertCount( 2, $result['candidates'] );
-		$this->assertEqualsWithDelta( 1.2, $result['candidates'][1]['score'], 0.001 );
-		$this->assertContains( 'mba', $result['candidates'][1]['sources'] );
-		$this->assertArrayHasKey( 'mba', $result['candidates'][1]['meta'] );
-	}
-
-	public function test_mba_supabase_error_is_non_fatal() {
-		\Brain\Monkey\Functions\expect( 'wp_verify_nonce' )->andReturn( true );
-		$this->security->method( 'enforce_rate_limit' )->willReturn( true );
-		$this->cache->method( 'get' )->willReturn( false );
-
-		$this->pinecone->method( 'query' )->willReturn(
-			array(
-				'matches' => array(
-					array(
-						'id'    => 'venue-1',
-						'score' => 0.9,
-					),
-				),
-			)
-		);
-
-		$this->supabase->method( 'select_in' )
-			->willReturnCallback(
-				function ( $table ) {
-					if ( 'venues' === $table ) {
-						return array(
-							array(
-								'slug' => 'venue-1',
-								'name' => 'Venue One',
-							),
-						);
-					}
-
-					if ( 'association_rules' === $table ) {
-						return new WP_Error( 'batp_supabase_http_error', 'Rules down' );
-					}
-
-					return array();
-				}
-			);
-
-		$result = $this->engine->generate_itinerary(
-			array(
-				'nonce'     => 'good_token',
-				'interests' => array(),
-			)
-		);
-
-		$this->assertIsArray( $result );
-		$this->assertArrayHasKey( 'itinerary', $result );
-	}
-
-	public function test_llm_ordering_successfully_reorders_candidates() {
-		\Brain\Monkey\Functions\expect( 'wp_verify_nonce' )->andReturn( true );
-		$this->security->method( 'enforce_rate_limit' )->willReturn( true );
-		$this->cache->method( 'get' )->willReturn( false );
-
-		$this->pinecone->method( 'query' )->willReturn(
-			array(
-				'matches' => array(
-					array(
-						'id'    => 'venue-1',
-						'score' => 0.9,
-					),
-					array(
-						'id'    => 'venue-2',
-						'score' => 0.8,
-					),
-				),
-			)
-		);
-
-		$this->supabase->method( 'select_in' )
-			->willReturnCallback(
-				function ( $table ) {
-					if ( 'venues' === $table ) {
-						return array(
-							array(
-								'slug'         => 'venue-1',
-								'name'         => 'Venue One',
-								'borough'      => 'Williamsburg',
-								'budget'       => 'low',
-								'vibe_summary' => 'Coffee + art',
-							),
-							array(
-								'slug'         => 'venue-2',
-								'name'         => 'Venue Two',
-								'borough'      => 'Brooklyn Heights',
-								'budget'       => 'medium',
-								'vibe_summary' => 'Dinner + jazz',
-							),
-						);
-					}
-
-					if ( 'association_rules' === $table ) {
-						return array();
-					}
-
-					return array();
-				}
-			);
-
-		$llm_payload = $this->mock_llm_payload(
-			array(
-				array(
-					'slug'             => 'venue-2',
-					'title'            => 'Dinner first',
-					'order'            => 1,
-					'arrival_minute'   => 0,
-					'duration_minutes' => 90,
-					'notes'            => 'Start with dinner',
-				),
-				array(
-					'slug'             => 'venue-1',
-					'title'            => 'Coffee after',
-					'order'            => 2,
-					'arrival_minute'   => 90,
-					'duration_minutes' => 60,
-					'notes'            => 'Wrap up with espresso',
-				),
-			)
-		);
-
-		$this->set_gemini_response( $llm_payload );
-
-		$result = $this->engine->generate_itinerary(
-			array(
-				'nonce'     => 'good_token',
-				'interests' => array(),
-			)
-		);
-
-		$this->assertIsArray( $result );
-		$this->assertCount( 2, $result['itinerary']['items'] );
 		$this->assertEquals( 'complete', $result['status'] );
-		$this->assertEquals( 'venue-2', $result['candidates'][0]['slug'] );
-		$this->assertArrayHasKey( 'llm', $result['candidates'][0]['meta'] );
-		$this->assertEquals( 'Dinner first', $result['candidates'][0]['meta']['llm']['title'] );
-		$this->assertTrue( in_array( 'llm', $result['candidates'][0]['sources'], true ) );
 	}
 
-	public function test_llm_ordering_gemini_error_bubbles_up() {
-		\Brain\Monkey\Functions\expect( 'wp_verify_nonce' )->andReturn( true );
-		$this->security->method( 'enforce_rate_limit' )->willReturn( true );
-		$this->cache->method( 'get' )->willReturn( false );
+	// =========================================================================
+	// PLACES API CONFIGURATION TESTS
+	// =========================================================================
 
-		$this->pinecone->method( 'query' )->willReturn(
-			array(
-				'matches' => array(
-					array(
-						'id'    => 'venue-1',
-						'score' => 0.9,
-					),
-				),
-			)
+	public function test_places_not_configured_returns_error() {
+		$engine = new Engine(
+			$this->security,
+			$this->cache,
+			$this->supabase,
+			null, // No places client
+			$this->directions,
+			$this->maps,
+			$this->gemini,
+			$this->analytics
 		);
 
-		$this->supabase->method( 'select_in' )
-			->willReturnCallback(
-				function ( $table ) {
-					if ( 'venues' === $table ) {
-						return array(
-							array(
-								'slug'   => 'venue-1',
-								'name'   => 'Venue One',
-								'budget' => 'low',
-							),
-						);
-					}
+		$result = $engine->generate_itinerary( array( 'interests' => array( 'food' ) ) );
 
-					if ( 'association_rules' === $table ) {
-						return array();
-					}
+		$this->assertInstanceOf( WP_Error::class, $result );
+		$this->assertEquals( 'batp_places_not_configured', $result->get_error_code() );
+	}
 
-					return array();
-				}
-			);
+	// =========================================================================
+	// STAGE 1: PLACES SEARCH TESTS
+	// =========================================================================
 
-		$this->set_gemini_response( new WP_Error( 'batp_gemini_error', 'LLM down' ) );
+	public function test_places_search_returns_venues() {
+		$this->places->method( 'nearby_search' )->willReturn( $this->mock_places_results( 5 ) );
+		$this->places->method( 'get_details' )->willReturn( $this->mock_place_details() );
+		$this->directions->method( 'get_multi_stop_route' )->willReturn( $this->mock_directions() );
+		$this->directions->method( 'distance_matrix' )->willReturn( array() );
+		$this->directions->method( 'build_maps_url' )->willReturn( 'https://maps.google.com' );
 
 		$result = $this->engine->generate_itinerary(
 			array(
-				'nonce'     => 'good_token',
-				'interests' => array(),
+				'lat'       => 40.6782,
+				'lng'       => -73.9442,
+				'interests' => array( 'food' ),
+			)
+		);
+
+		$this->assertIsArray( $result );
+		$this->assertArrayHasKey( 'candidates', $result );
+		$this->assertGreaterThan( 0, count( $result['candidates'] ) );
+	}
+
+	public function test_places_search_no_results_returns_error() {
+		$this->places->method( 'nearby_search' )->willReturn( array() );
+
+		$result = $this->engine->generate_itinerary(
+			array(
+				'lat'       => 40.6782,
+				'lng'       => -73.9442,
+				'interests' => array( 'food' ),
 			)
 		);
 
 		$this->assertInstanceOf( WP_Error::class, $result );
-		$this->assertEquals( 'batp_gemini_error', $result->get_error_code() );
+		$this->assertEquals( 'batp_no_venues', $result->get_error_code() );
+	}
+
+	public function test_places_search_api_error_continues_to_next_interest() {
+		// First interest errors, second succeeds
+		$this->places->method( 'nearby_search' )
+			->willReturnOnConsecutiveCalls(
+				new WP_Error( 'api_error', 'First failed' ),
+				$this->mock_places_results( 3 )
+			);
+		$this->places->method( 'get_details' )->willReturn( $this->mock_place_details() );
+		$this->directions->method( 'get_multi_stop_route' )->willReturn( $this->mock_directions() );
+		$this->directions->method( 'distance_matrix' )->willReturn( array() );
+		$this->directions->method( 'build_maps_url' )->willReturn( 'https://maps.google.com' );
+
+		$result = $this->engine->generate_itinerary(
+			array(
+				'interests' => array( 'food', 'drinks' ),
+			)
+		);
+
+		// Should succeed with venues from second interest
+		$this->assertIsArray( $result );
+		$this->assertEquals( 'complete', $result['status'] );
+	}
+
+	// =========================================================================
+	// STAGE 3: FILTER TESTS
+	// =========================================================================
+
+	public function test_budget_filter_low_excludes_expensive() {
+		// Return venues with different price levels
+		$venues = array(
+			$this->create_place_result( 'cheap-place', 'Cheap Place', 1 ),
+			$this->create_place_result( 'expensive-place', 'Expensive Place', 4 ),
+		);
+		$this->places->method( 'nearby_search' )->willReturn( $venues );
+		$this->places->method( 'get_details' )
+			->willReturnOnConsecutiveCalls(
+				$this->mock_place_details( 'cheap-place', 1 ),
+				$this->mock_place_details( 'expensive-place', 4 )
+			);
+		$this->directions->method( 'get_multi_stop_route' )->willReturn( $this->mock_directions() );
+		$this->directions->method( 'distance_matrix' )->willReturn( array() );
+		$this->directions->method( 'build_maps_url' )->willReturn( 'https://maps.google.com' );
+
+		$result = $this->engine->generate_itinerary(
+			array(
+				'budget'    => 'low',
+				'interests' => array( 'food' ),
+			)
+		);
+
+		$this->assertIsArray( $result );
+		// Only cheap venue should remain after filtering
+		$this->assertCount( 1, $result['candidates'] );
+	}
+
+	public function test_filter_excludes_closed_venues() {
+		$venues = array(
+			$this->create_place_result( 'open-place', 'Open Place' ),
+		);
+		$this->places->method( 'nearby_search' )->willReturn( $venues );
+
+		// Return details showing venue is closed
+		$details                  = $this->mock_place_details( 'open-place' );
+		$details['opening_hours'] = array( 'open_now' => false );
+		$this->places->method( 'get_details' )->willReturn( $details );
+
+		$result = $this->engine->generate_itinerary(
+			array( 'interests' => array( 'food' ) )
+		);
+
+		// Should fail as no venues pass filter
+		$this->assertInstanceOf( WP_Error::class, $result );
+		$this->assertEquals( 'batp_no_venues_after_filter', $result->get_error_code() );
+	}
+
+	// =========================================================================
+	// STAGE 4: LLM ORDERING TESTS
+	// =========================================================================
+
+	public function test_llm_ordering_skipped_for_three_or_fewer_venues() {
+		$venues = $this->mock_places_results( 3 );
+		$this->places->method( 'nearby_search' )->willReturn( $venues );
+		$this->places->method( 'get_details' )->willReturn( $this->mock_place_details() );
+		$this->directions->method( 'get_multi_stop_route' )->willReturn( $this->mock_directions() );
+		$this->directions->method( 'distance_matrix' )->willReturn( array() );
+		$this->directions->method( 'build_maps_url' )->willReturn( 'https://maps.google.com' );
+
+		// LLM should never be called
+		$this->gemini->expects( $this->never() )->method( 'generate_content' );
+
+		$result = $this->engine->generate_itinerary(
+			array( 'interests' => array( 'food' ) )
+		);
+
+		$this->assertIsArray( $result );
+		$this->assertEquals( 'complete', $result['status'] );
+	}
+
+	public function test_llm_ordering_error_is_non_fatal() {
+		$venues = $this->mock_places_results( 5 );
+		$this->places->method( 'nearby_search' )->willReturn( $venues );
+		$this->places->method( 'get_details' )->willReturn( $this->mock_place_details() );
+		$this->directions->method( 'get_multi_stop_route' )->willReturn( $this->mock_directions() );
+		$this->directions->method( 'distance_matrix' )->willReturn( array() );
+		$this->directions->method( 'build_maps_url' )->willReturn( 'https://maps.google.com' );
+
+		// LLM returns error
+		$this->gemini_response = new WP_Error( 'llm_error', 'LLM failed' );
+
+		$result = $this->engine->generate_itinerary(
+			array( 'interests' => array( 'food' ) )
+		);
+
+		// Should still succeed using fallback sort
+		$this->assertIsArray( $result );
+		$this->assertEquals( 'complete', $result['status'] );
+	}
+
+	// =========================================================================
+	// STAGE 5: DIRECTIONS TESTS
+	// =========================================================================
+
+	public function test_directions_failure_is_non_fatal() {
+		$venues = $this->mock_places_results( 3 );
+		$this->places->method( 'nearby_search' )->willReturn( $venues );
+		$this->places->method( 'get_details' )->willReturn( $this->mock_place_details() );
+
+		// Directions fails
+		$this->directions->method( 'get_multi_stop_route' )
+			->willReturn( new WP_Error( 'directions_error', 'No route' ) );
+		$this->directions->method( 'distance_matrix' )->willReturn( array() );
+		$this->directions->method( 'build_maps_url' )->willReturn( '#' );
+
+		$result = $this->engine->generate_itinerary(
+			array( 'interests' => array( 'food' ) )
+		);
+
+		// Should still succeed without directions
+		$this->assertIsArray( $result );
+		$this->assertEquals( 'complete', $result['status'] );
+		$this->assertEquals( '', $result['directions']['polyline'] );
+	}
+
+	// =========================================================================
+	// CACHE TESTS
+	// =========================================================================
+
+	public function test_cache_hit_returns_cached_response() {
+		$cached_response = array(
+			'candidates' => array(),
+			'itinerary'  => array( 'items' => array() ),
+			'directions' => array(),
+			'meta'       => array(),
+			'status'     => 'complete',
+		);
+
+		$this->cache = $this->createMock( Cache_Service::class );
+		$this->cache->method( 'get' )->willReturn( $cached_response );
+
+		$engine = new Engine(
+			$this->security,
+			$this->cache,
+			$this->supabase,
+			$this->places,
+			$this->directions,
+			$this->maps,
+			$this->gemini,
+			$this->analytics
+		);
+
+		// Places should never be called
+		$this->places->expects( $this->never() )->method( 'nearby_search' );
+
+		$result = $engine->generate_itinerary( array( 'interests' => array( 'food' ) ) );
+
+		$this->assertEquals( $cached_response, $result );
+	}
+
+	// =========================================================================
+	// FULL PIPELINE TEST
+	// =========================================================================
+
+	public function test_full_pipeline_success() {
+		$venues = $this->mock_places_results( 4 );
+		$this->places->method( 'nearby_search' )->willReturn( $venues );
+		$this->places->method( 'get_details' )->willReturn( $this->mock_place_details() );
+		$this->directions->method( 'get_multi_stop_route' )->willReturn( $this->mock_directions() );
+		$this->directions->method( 'distance_matrix' )->willReturn( array() );
+		$this->directions->method( 'build_maps_url' )->willReturn( 'https://maps.google.com/dir/...' );
+
+		$result = $this->engine->generate_itinerary(
+			array(
+				'lat'         => 40.7081,
+				'lng'         => -73.9571,
+				'interests'   => array( 'food', 'drinks' ),
+				'budget'      => 'medium',
+				'time_window' => 180,
+			)
+		);
+
+		$this->assertIsArray( $result );
+		$this->assertEquals( 'complete', $result['status'] );
+		$this->assertArrayHasKey( 'candidates', $result );
+		$this->assertArrayHasKey( 'itinerary', $result );
+		$this->assertArrayHasKey( 'directions', $result );
+		$this->assertArrayHasKey( 'meta', $result );
+		$this->assertEquals( 'google_places_v2', $result['meta']['pipeline'] );
+	}
+
+	// =========================================================================
+	// HELPER METHODS
+	// =========================================================================
+
+	private function mock_places_results( int $count = 3 ): array {
+		$results = array();
+		for ( $i = 1; $i <= $count; $i++ ) {
+			$results[] = $this->create_place_result( "place-id-{$i}", "Venue {$i}" );
+		}
+		return $results;
+	}
+
+	private function create_place_result( string $place_id, string $name, int $price_level = 2 ): array {
+		return array(
+			'place_id'        => $place_id,
+			'name'            => $name,
+			'rating'          => 4.0 + ( rand( 0, 10 ) / 10 ),
+			'price_level'     => $price_level,
+			'vicinity'        => '123 Test St, Brooklyn, NY',
+			'geometry'        => array(
+				'location' => array(
+					'lat' => 40.6782 + ( rand( -100, 100 ) / 10000 ),
+					'lng' => -73.9442 + ( rand( -100, 100 ) / 10000 ),
+				),
+			),
+			'opening_hours'   => array( 'open_now' => true ),
+			'business_status' => 'OPERATIONAL',
+		);
+	}
+
+	private function mock_place_details( string $place_id = 'test-place', int $price_level = 2 ): array {
+		return array(
+			'place_id'                       => $place_id,
+			'name'                           => 'Test Venue',
+			'formatted_address'              => '123 Test St, Brooklyn, NY 11201',
+			'formatted_phone_number'         => '(555) 123-4567',
+			'website'                        => 'https://example.com',
+			'rating'                         => 4.5,
+			'price_level'                    => $price_level,
+			'opening_hours'                  => array( 'open_now' => true ),
+			'business_status'                => 'OPERATIONAL',
+			'geometry'                       => array(
+				'location' => array(
+					'lat' => 40.6782,
+					'lng' => -73.9442,
+				),
+			),
+			'wheelchair_accessible_entrance' => true,
+			'types'                          => array( 'restaurant', 'food' ),
+		);
+	}
+
+	private function mock_directions(): array {
+		return array(
+			'polyline'     => 'encodedPolylineString',
+			'legs'         => array(
+				array(
+					'duration' => array(
+						'text'  => '10 mins',
+						'value' => 600,
+					),
+					'distance' => array(
+						'text'  => '0.5 mi',
+						'value' => 800,
+					),
+				),
+			),
+			'total_text'   => '10 mins',
+			'overview_url' => 'https://maps.google.com',
+		);
 	}
 
 	private function mock_llm_payload( array $items = array() ): array {
-		$payload = array(
-			'meta'  => array( 'summary' => 'Mock itinerary' ),
-			'items' => $items,
+		$default_items = array(
+			array(
+				'slug'             => 'place-1',
+				'title'            => 'First Stop',
+				'order'            => 1,
+				'arrival_minute'   => 0,
+				'duration_minutes' => 60,
+				'notes'            => 'Start here',
+			),
+		);
+		$payload       = array(
+			'meta'  => array( 'summary' => 'Test itinerary' ),
+			'items' => ! empty( $items ) ? $items : $default_items,
 		);
 
 		return array(
@@ -658,17 +494,11 @@ class EngineTest extends TestCase {
 				array(
 					'content' => array(
 						'parts' => array(
-							array(
-								'text' => json_encode( $payload ),
-							),
+							array( 'text' => json_encode( $payload ) ),
 						),
 					),
 				),
 			),
 		);
-	}
-
-	private function set_gemini_response( $response ): void {
-		$this->gemini_response = $response;
 	}
 }
