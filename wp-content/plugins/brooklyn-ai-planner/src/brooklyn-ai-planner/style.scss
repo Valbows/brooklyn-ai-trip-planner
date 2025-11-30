@@ -674,6 +674,79 @@ $shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.
 	}
 }
 
+// SOCIAL MEDIA SHARE
+.batp-social-share {
+	display: flex;
+	gap: 0.75rem;
+	margin-bottom: 1.5rem;
+}
+
+.batp-social-btn {
+	width: 48px;
+	height: 48px;
+	border-radius: 50%;
+	border: none;
+	cursor: pointer;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: #fff;
+	transition: transform 0.15s ease, box-shadow 0.15s ease;
+
+	&:hover {
+		transform: scale(1.1);
+		box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+	}
+
+	&:active {
+		transform: scale(0.95);
+	}
+
+	svg {
+		width: 22px;
+		height: 22px;
+	}
+
+	&--facebook {
+		background: #1877f2;
+	}
+
+	&--x {
+		background: #000;
+	}
+
+	&--whatsapp {
+		background: #25d366;
+	}
+
+	&--linkedin {
+		background: #0077b5;
+	}
+
+	&--instagram {
+		background: linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%);
+	}
+
+	&--tiktok {
+		background: #000;
+		position: relative;
+
+		&::before {
+			content: "";
+			position: absolute;
+			inset: 0;
+			border-radius: 50%;
+			background: linear-gradient(45deg, #69c9d0, #ee1d52);
+			opacity: 0;
+			transition: opacity 0.15s ease;
+		}
+
+		&:hover::before {
+			opacity: 0.3;
+		}
+	}
+}
+
 // SUMMARY
 .batp-itinerary-summary-box {
 	background: #f7fafc;

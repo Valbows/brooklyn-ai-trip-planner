@@ -643,6 +643,243 @@ const initItineraryForm = () => {
 				const original = copyBtn.innerText;
 				copyBtn.innerText = 'Copied!';
 				setTimeout( () => ( copyBtn.innerText = original ), 2000 );
+				trackEvent( 'share_copy_link', null, { method: 'copy' } );
+			};
+		}
+
+		// Helper: Build itinerary text for sharing
+		const buildShareText = () => {
+			const title = 'My Brooklyn Adventure';
+			const venueList = itineraryItems
+				.map( ( item, i ) => `${ i + 1 }. ${ item.title }` )
+				.join( '\n' );
+			return `${ title }\n\n${ venueList }\n\nPlan yours at: ${ window.location.href }`;
+		};
+
+		// Download PDF - uses browser print dialog
+		const pdfBtn = document.getElementById( 'batp-btn-download-pdf' );
+		if ( pdfBtn ) {
+			pdfBtn.onclick = () => {
+				// Create printable content
+				const printContent = `
+					<!DOCTYPE html>
+					<html>
+					<head>
+						<title>Brooklyn Itinerary</title>
+						<style>
+							body { font-family: 'Inter', -apple-system, sans-serif; padding: 40px; max-width: 800px; margin: 0 auto; }
+							h1 { color: #8B4513; border-bottom: 2px solid #8B4513; padding-bottom: 10px; }
+							.venue { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 8px; }
+							.venue h2 { margin: 0 0 8px 0; color: #333; font-size: 18px; }
+							.venue p { margin: 4px 0; color: #666; font-size: 14px; }
+							.footer { margin-top: 40px; text-align: center; color: #999; font-size: 12px; }
+						</style>
+					</head>
+					<body>
+						<h1>My Brooklyn Adventure</h1>
+						<p>Generated on ${ new Date().toLocaleDateString() }</p>
+						${ itineraryItems
+							.map(
+								( item, i ) => `
+							<div class="venue">
+								<h2>${ i + 1 }. ${ item.title }</h2>
+								<p>${ item.address || '' }</p>
+								${ item.phone ? `<p>Phone: ${ item.phone }</p>` : '' }
+								${ item.website ? `<p>Website: ${ item.website }</p>` : '' }
+							</div>
+						`
+							)
+							.join( '' ) }
+						<div class="footer">
+							<p>Created with Brooklyn AI Trip Planner</p>
+							<p>${ window.location.origin }</p>
+						</div>
+					</body>
+					</html>
+				`;
+
+				const printWindow = window.open( '', '_blank' );
+				printWindow.document.write( printContent );
+				printWindow.document.close();
+				printWindow.print();
+				trackEvent( 'share_download_pdf', null, {
+					venues: itineraryItems.length,
+				} );
+			};
+		}
+
+		// Add to Calendar (ICS)
+		const calBtn = document.getElementById( 'batp-btn-add-calendar' );
+		if ( calBtn ) {
+			calBtn.onclick = () => {
+				const now = new Date();
+				const tomorrow = new Date( now );
+				tomorrow.setDate( tomorrow.getDate() + 1 );
+				tomorrow.setHours( 10, 0, 0, 0 );
+
+				const formatDate = ( d ) =>
+					d.toISOString().replace( /[-:]/g, '' ).split( '.' )[ 0 ] +
+					'Z';
+
+				const venues = itineraryItems
+					.map( ( v ) => v.title )
+					.join( ', ' );
+				const description = `Brooklyn Adventure:\\n\\n${ itineraryItems
+					.map(
+						( v, i ) =>
+							`${ i + 1 }. ${ v.title }${
+								v.address ? ' - ' + v.address : ''
+							}`
+					)
+					.join( '\\n' ) }`;
+
+				const icsContent = [
+					'BEGIN:VCALENDAR',
+					'VERSION:2.0',
+					'PRODID:-//Brooklyn AI Trip Planner//EN',
+					'BEGIN:VEVENT',
+					`UID:${ Date.now() }@visitbrooklynnyc`,
+					`DTSTAMP:${ formatDate( now ) }`,
+					`DTSTART:${ formatDate( tomorrow ) }`,
+					`DTEND:${ formatDate(
+						new Date( tomorrow.getTime() + 4 * 60 * 60 * 1000 )
+					) }`,
+					`SUMMARY:Brooklyn Adventure`,
+					`DESCRIPTION:${ description }`,
+					`LOCATION:${ venues }`,
+					'END:VEVENT',
+					'END:VCALENDAR',
+				].join( '\r\n' );
+
+				const blob = new Blob( [ icsContent ], {
+					type: 'text/calendar;charset=utf-8',
+				} );
+				const link = document.createElement( 'a' );
+				link.href = URL.createObjectURL( blob );
+				link.download = 'brooklyn-itinerary.ics';
+				link.click();
+				URL.revokeObjectURL( link.href );
+				trackEvent( 'share_add_calendar', null, {
+					venues: itineraryItems.length,
+				} );
+			};
+		}
+
+		// Share via Email
+		const emailBtn = document.getElementById( 'batp-btn-share-email' );
+		if ( emailBtn ) {
+			emailBtn.onclick = () => {
+				const subject = encodeURIComponent(
+					'Check out my Brooklyn itinerary!'
+				);
+				const body = encodeURIComponent( buildShareText() );
+				window.open(
+					`mailto:?subject=${ subject }&body=${ body }`,
+					'_self'
+				);
+				trackEvent( 'share_email', null, {
+					venues: itineraryItems.length,
+				} );
+			};
+		}
+
+		// Share via SMS
+		const smsBtn = document.getElementById( 'batp-btn-share-sms' );
+		if ( smsBtn ) {
+			smsBtn.onclick = () => {
+				const text = encodeURIComponent( buildShareText() );
+				// Use sms: protocol (works on mobile)
+				window.open( `sms:?body=${ text }`, '_self' );
+				trackEvent( 'share_sms', null, {
+					venues: itineraryItems.length,
+				} );
+			};
+		}
+
+		// Social Media Sharing
+		const shareUrl = encodeURIComponent( window.location.href );
+		const shareText = encodeURIComponent(
+			`I just planned a Brooklyn adventure with ${ itineraryItems.length } stops!`
+		);
+
+		// Facebook
+		const fbBtn = document.getElementById( 'batp-btn-share-facebook' );
+		if ( fbBtn ) {
+			fbBtn.onclick = () => {
+				window.open(
+					`https://www.facebook.com/sharer/sharer.php?u=${ shareUrl }`,
+					'_blank',
+					'width=600,height=400'
+				);
+				trackEvent( 'share_social', null, { platform: 'facebook' } );
+			};
+		}
+
+		// X (Twitter)
+		const xBtn = document.getElementById( 'batp-btn-share-x' );
+		if ( xBtn ) {
+			xBtn.onclick = () => {
+				window.open(
+					`https://twitter.com/intent/tweet?url=${ shareUrl }&text=${ shareText }`,
+					'_blank',
+					'width=600,height=400'
+				);
+				trackEvent( 'share_social', null, { platform: 'x' } );
+			};
+		}
+
+		// WhatsApp
+		const waBtn = document.getElementById( 'batp-btn-share-whatsapp' );
+		if ( waBtn ) {
+			waBtn.onclick = () => {
+				window.open(
+					`https://wa.me/?text=${ shareText }%20${ shareUrl }`,
+					'_blank'
+				);
+				trackEvent( 'share_social', null, { platform: 'whatsapp' } );
+			};
+		}
+
+		// LinkedIn
+		const liBtn = document.getElementById( 'batp-btn-share-linkedin' );
+		if ( liBtn ) {
+			liBtn.onclick = () => {
+				window.open(
+					`https://www.linkedin.com/sharing/share-offsite/?url=${ shareUrl }`,
+					'_blank',
+					'width=600,height=400'
+				);
+				trackEvent( 'share_social', null, { platform: 'linkedin' } );
+			};
+		}
+
+		// Instagram - Opens Instagram app/web (no direct share API, so we copy to clipboard and open)
+		const igBtn = document.getElementById( 'batp-btn-share-instagram' );
+		if ( igBtn ) {
+			igBtn.onclick = () => {
+				const text = buildShareText();
+				navigator.clipboard.writeText( text ).then( () => {
+					alert(
+						'Itinerary copied to clipboard! Opening Instagram - paste in your story or post.'
+					);
+					window.open( 'https://www.instagram.com/', '_blank' );
+				} );
+				trackEvent( 'share_social', null, { platform: 'instagram' } );
+			};
+		}
+
+		// TikTok - Similar to Instagram, no direct share API
+		const ttBtn = document.getElementById( 'batp-btn-share-tiktok' );
+		if ( ttBtn ) {
+			ttBtn.onclick = () => {
+				const text = buildShareText();
+				navigator.clipboard.writeText( text ).then( () => {
+					alert(
+						'Itinerary copied to clipboard! Opening TikTok - paste in your video description.'
+					);
+					window.open( 'https://www.tiktok.com/', '_blank' );
+				} );
+				trackEvent( 'share_social', null, { platform: 'tiktok' } );
 			};
 		}
 

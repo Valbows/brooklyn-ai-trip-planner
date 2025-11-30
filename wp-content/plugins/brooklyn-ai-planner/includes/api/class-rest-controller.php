@@ -63,7 +63,19 @@ class REST_Controller extends WP_REST_Controller {
 							'required'          => true,
 							'type'              => 'string',
 							'validate_callback' => function ( $param ) {
-								return in_array( $param, array( 'website_click', 'phone_click', 'directions_click', 'itinerary_generated' ), true );
+								$allowed = array(
+									'website_click',
+									'phone_click',
+									'directions_click',
+									'itinerary_generated',
+									'share_copy_link',
+									'share_download_pdf',
+									'share_add_calendar',
+									'share_email',
+									'share_sms',
+									'share_social',
+								);
+								return in_array( $param, $allowed, true );
 							},
 						),
 						'place_id'    => array(

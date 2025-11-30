@@ -251,6 +251,73 @@
 - `admin/class-reports-page.php` - Direct query instead of RPC
 - `tests/phpunit/EngineTest.php` - Updated for new Engine constructor
 
+---
 
+## Session: November 30, 2025
 
+### Sprint: Unit Test Fixes & Share Feature Enhancement
+
+#### 1. EngineTest Complete Rewrite
+**Problem:** All 14 Engine tests were failing due to references to removed Pinecone client and outdated mocks.
+
+**Solution:** Completely rewrote `EngineTest.php` to match the new Google Places API pipeline:
+- Removed all Pinecone-related test code
+- Updated mocks for `Google_Places_Client` and `Google_Directions_Client`
+- Fixed method names: `get_multi_stop_route` instead of `get_route`
+- Fixed `Cache_Service::set()` void return type mock
+
+**New Test Coverage (14 tests):**
+| Stage | Tests |
+|-------|-------|
+| Guardrails | Rate limit, invalid location, default Brooklyn coords |
+| Places Config | Handles null Places client |
+| Places Search | Success, no results, error recovery |
+| Filters | Budget filter, closed venue filter |
+| LLM Ordering | Skip for ≤3 venues, non-fatal errors |
+| Directions | Non-fatal errors |
+| Cache | Returns cached response |
+| Full Pipeline | End-to-end integration |
+
+**Result:** All 20 tests pass (14 Engine + 6 other)
+
+#### 2. Share & Export Feature Enhancement
+**Added full functionality to share modal:**
+
+**Download & Export:**
+- **Download PDF** - Opens print dialog with formatted itinerary document
+- **Add to Calendar** - Downloads `.ics` file for iCal/Google Calendar/Outlook
+
+**Share Link:**
+- **Copy Link** - Copies current page URL to clipboard
+- **Share via Email** - Opens email client with pre-filled subject and body
+- **Share via SMS** - Opens SMS app (mobile) with itinerary text
+
+**Social Media Sharing (6 platforms):**
+- Facebook (blue)
+- X/Twitter (black)
+- WhatsApp (green)
+- LinkedIn (blue)
+- Instagram (gradient) - Copies text, opens Instagram
+- TikTok (black) - Copies text, opens TikTok
+
+#### 3. Analytics Tracking for Share Events
+**Updated `class-rest-controller.php`** to accept new share event types:
+- `share_copy_link`
+- `share_download_pdf`
+- `share_add_calendar`
+- `share_email`
+- `share_sms`
+- `share_social` (with platform metadata)
+
+#### Files Modified
+- `tests/phpunit/EngineTest.php` - Complete rewrite for Google Places pipeline
+- `includes/api/class-rest-controller.php` - Added share event types to allowed actions
+- `src/brooklyn-ai-planner/render.php` - Added social media buttons (Instagram, TikTok)
+- `src/brooklyn-ai-planner/view.js` - All share functionality implementations
+- `src/brooklyn-ai-planner/style.scss` - Social media button styles with brand colors
+
+#### Test Results
+```
+OK (20 tests, 51 assertions)
+```
 
