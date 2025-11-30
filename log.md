@@ -321,3 +321,95 @@
 OK (20 tests, 51 assertions)
 ```
 
+---
+
+## Session: November 30, 2025 (Part 2)
+
+### Features: Admin Reports Date Range & Replace Item
+
+#### 1. Admin Reports Date Range Selector
+**Added customizable date ranges to the reports dashboard:**
+
+**Date Range Options:**
+- Week (Last 7 Days)
+- Month (Last 30 Days) - default
+- Quarter (Last 90 Days)
+- Year (Last 365 Days)
+- All Time
+
+**New Features:**
+- Button-style date range selector
+- Dynamic filtering of analytics data
+- New "Shares & Exports" card tracking all share events
+- Enhanced email report with dynamic data
+
+**Files Modified:**
+- `admin/class-reports-page.php` - Complete date range filtering system
+
+#### 2. Editable Itinerary: Replace Item
+**Added ability to replace venues in the itinerary:**
+
+**How it works:**
+1. Each venue card now has Replace (↻) and Remove (×) buttons
+2. Click Replace to open modal with alternative venues
+3. Select a replacement from candidates not currently in itinerary
+4. Item is swapped and itinerary re-renders
+
+**Implementation:**
+- New replace modal in `render.php`
+- Replace button and handlers in `view.js`
+- Tracking of available candidates (unused venues from API)
+- `item_replaced` analytics event
+- Styled replace option list
+
+**Files Modified:**
+- `src/brooklyn-ai-planner/render.php` - Replace modal HTML
+- `src/brooklyn-ai-planner/view.js` - Replace functionality and state management
+- `src/brooklyn-ai-planner/style.scss` - Card actions, replace button, modal option styles
+- `includes/api/class-rest-controller.php` - Added `item_replaced` event type
+
+#### Test Results
+```
+OK (20 tests, 51 assertions)
+```
+
+---
+
+## Session: November 30, 2025 (Part 3)
+
+### Bug Fixes: Analytics Tracking for Share Events
+
+#### Issue
+Share events (`share_download_pdf`, `share_copy_link`, etc.) were returning **400 Bad Request** because:
+1. PDF tracking was called after `window.open()` which can be blocked by popup blocker
+2. REST API rejected `null` for `place_id` (share events don't have a specific venue)
+
+#### Fixes Applied
+
+**1. PDF Download Tracking (view.js)**
+- Moved `trackEvent()` call BEFORE `window.open()` to ensure it fires
+- Added null check for popup blocker with user-friendly alert
+
+**2. REST Controller (class-rest-controller.php)**
+- Changed `place_id` type from `'string'` to `array('string', 'null')` 
+- Share events now work correctly without a place_id
+
+#### New Tests Added
+- `ReportsPageTest.php` - Tests for date range functionality:
+  - `test_date_ranges_constant_exists`
+  - `test_get_start_date_returns_correct_values`
+  - `test_get_range_label_returns_correct_labels`
+  - `test_get_range_label_defaults_for_invalid`
+  
+- `RestControllerTest.php` - Tests for event tracking:
+  - `test_action_type_allows_share_events`
+  - `test_item_replaced_is_allowed`
+  - `test_place_id_schema_accepts_null`
+  - `test_all_share_event_types_defined`
+  - `test_total_event_types_count`
+
+#### Test Results
+```
+OK (29 tests, 79 assertions)
+```
+

@@ -439,10 +439,17 @@ $shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.
 		}
 	}
 
-	&__remove {
+	&__actions {
 		position: absolute;
 		top: 0.5rem;
 		right: 0.5rem;
+		display: flex;
+		gap: 0.35rem;
+		z-index: 10;
+	}
+
+	&__remove,
+	&__replace {
 		width: 28px;
 		height: 28px;
 		border: none;
@@ -456,12 +463,22 @@ $shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.
 		align-items: center;
 		justify-content: center;
 		transition: background 0.2s, color 0.2s;
-		z-index: 10;
 
-		&:hover {
-			background: #ef4444;
-			color: #fff;
+		.dashicons {
+			font-size: 16px;
+			width: 16px;
+			height: 16px;
 		}
+	}
+
+	&__remove:hover {
+		background: #ef4444;
+		color: #fff;
+	}
+
+	&__replace:hover {
+		background: $color-primary-blue;
+		color: #fff;
 	}
 
 	&__rating {
@@ -769,6 +786,65 @@ $shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.
 			color: $color-primary-orange;
 		}
 	}
+}
+
+// REPLACE MODAL OPTIONS
+.batp-replace-list {
+	max-height: 300px;
+	overflow-y: auto;
+	margin-bottom: 1rem;
+}
+
+.batp-replace-option {
+	width: 100%;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	padding: 1rem;
+	border: 1px solid #e2e8f0;
+	border-radius: 8px;
+	margin-bottom: 0.5rem;
+	background: #fff;
+	cursor: pointer;
+	transition: border-color 0.2s, background 0.2s;
+
+	&:hover {
+		background: #f7fafc;
+		border-color: $color-primary-blue;
+	}
+
+	&__info {
+		text-align: left;
+
+		strong {
+			display: block;
+			font-size: 1rem;
+			color: $color-text-dark;
+			margin-bottom: 0.25rem;
+		}
+
+		span {
+			font-size: 0.85rem;
+			color: $color-text-muted;
+		}
+	}
+
+	.dashicons {
+		color: $color-text-muted;
+		transition: color 0.2s;
+	}
+
+	&:hover .dashicons {
+		color: $color-primary-blue;
+	}
+}
+
+.batp-replace-empty {
+	text-align: center;
+	color: $color-text-muted;
+	padding: 2rem;
+	background: #f7fafc;
+	border-radius: 8px;
 }
 
 // FILTER CHECKBOXES

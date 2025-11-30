@@ -74,14 +74,15 @@ class REST_Controller extends WP_REST_Controller {
 									'share_email',
 									'share_sms',
 									'share_social',
+									'item_replaced',
 								);
 								return in_array( $param, $allowed, true );
 							},
 						),
 						'place_id'    => array(
 							'required'    => false,
-							'type'        => 'string',
-							'description' => 'Google Places ID for the venue.',
+							'type'        => array( 'string', 'null' ),
+							'description' => 'Google Places ID for the venue (optional for non-venue events).',
 						),
 						'metadata'    => array(
 							'required' => false,

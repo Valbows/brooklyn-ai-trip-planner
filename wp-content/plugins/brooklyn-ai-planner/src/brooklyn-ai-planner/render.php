@@ -263,6 +263,28 @@ $wrapper_attrs = get_block_wrapper_attributes( array(
 		</div>
 	</div>
 
+	<!-- REPLACE ITEM MODAL -->
+	<div class="batp-modal" id="batp-replace-modal" aria-hidden="true">
+		<div class="batp-modal__overlay" data-modal-close></div>
+		<div class="batp-modal__content batp-modal__content--sm">
+			<div class="batp-modal__header">
+				<h3>Replace Venue</h3>
+				<button class="batp-modal__close" data-modal-close>&times;</button>
+			</div>
+			<div class="batp-modal__body">
+				<p class="batp-modal__subtitle">Select a different venue to replace <strong id="batp-replace-current-name"></strong></p>
+				
+				<div class="batp-replace-list" id="batp-replace-list">
+					<!-- Populated via JS -->
+				</div>
+				
+				<div class="batp-modal__footer">
+					<button class="button" data-modal-close>Cancel</button>
+				</div>
+			</div>
+		</div>
+	</div>
+
 	<!-- FILTER MODAL -->
 	<div class="batp-modal" id="batp-filter-modal" aria-hidden="true">
 		<div class="batp-modal__overlay" data-modal-close></div>

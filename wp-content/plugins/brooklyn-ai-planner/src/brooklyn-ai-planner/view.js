@@ -429,6 +429,20 @@ const initItineraryForm = () => {
 		// State for editable itinerary
 		let currentItems = [ ...itineraryItems ];
 
+		// All candidates for replacement options
+		const allCandidates = data.candidates || [];
+
+		// Get available replacements (candidates not in current itinerary)
+		const getAvailableReplacements = () => {
+			const currentSlugs = new Set( currentItems.map( ( i ) => i.slug ) );
+			return allCandidates.filter(
+				( c ) => ! currentSlugs.has( c.slug )
+			);
+		};
+
+		// Replace modal state
+		let replacingSlug = null;
+
 		// Render List View (Cards)
 		const renderList = ( items ) => {
 			if ( ! listOutput ) {
@@ -490,9 +504,18 @@ const initItineraryForm = () => {
 				}" data-access='${ JSON.stringify(
 					details.accessibility || []
 				) }'>
-					<button class="batp-card__remove" data-remove-slug="${
-						item.slug
-					}" title="Remove from itinerary">×</button>
+					<div class="batp-card__actions">
+						<button class="batp-card__replace" data-replace-slug="${
+							item.slug
+						}" data-replace-title="${
+							item.title
+						}" title="Replace with another venue">
+							<span class="dashicons dashicons-update"></span>
+						</button>
+						<button class="batp-card__remove" data-remove-slug="${
+							item.slug
+						}" title="Remove from itinerary">×</button>
+					</div>
 					<div class="batp-card__header">
 						<div>
 							<span class="batp-card__status">${
@@ -569,7 +592,143 @@ const initItineraryForm = () => {
 						}
 					} );
 				} );
+
+			// Handle replace button clicks
+			listOutput
+				.querySelectorAll( '.batp-card__replace' )
+				.forEach( ( btn ) => {
+					btn.addEventListener( 'click', ( e ) => {
+						e.preventDefault();
+						replacingSlug = btn.dataset.replaceSlug;
+						const replacingTitle = btn.dataset.replaceTitle;
+						openReplaceModal( replacingSlug, replacingTitle );
+					} );
+				} );
 		};
+
+		// Replace Modal Logic
+		const replaceModal = document.getElementById( 'batp-replace-modal' );
+		const replaceList = document.getElementById( 'batp-replace-list' );
+		const replaceCurrentName = document.getElementById(
+			'batp-replace-current-name'
+		);
+
+		const openReplaceModal = ( slug, title ) => {
+			if ( ! replaceModal || ! replaceList ) {
+				return;
+			}
+
+			// Update modal title
+			if ( replaceCurrentName ) {
+				replaceCurrentName.textContent = title;
+			}
+
+			// Get available replacements
+			const available = getAvailableReplacements();
+
+			if ( available.length === 0 ) {
+				replaceList.innerHTML = `
+					<p class="batp-replace-empty">No alternative venues available. All candidates are already in your itinerary.</p>
+				`;
+			} else {
+				replaceList.innerHTML = available
+					.map( ( c ) => {
+						const rating = c.data?.rating
+							? `${ c.data.rating }★`
+							: '';
+						const priceLevel = c.data?.price_level
+							? '$'.repeat( c.data.price_level )
+							: '';
+						return `
+						<button class="batp-replace-option" data-new-slug="${ c.slug }">
+							<div class="batp-replace-option__info">
+								<strong>${ c.data?.name || c.slug }</strong>
+								<span>${ rating } ${ priceLevel }</span>
+							</div>
+							<span class="dashicons dashicons-arrow-right-alt"></span>
+						</button>
+					`;
+					} )
+					.join( '' );
+
+				// Attach click handlers to replacement options
+				replaceList
+					.querySelectorAll( '.batp-replace-option' )
+					.forEach( ( opt ) => {
+						opt.addEventListener( 'click', () => {
+							const newSlug = opt.dataset.newSlug;
+							performReplacement( replacingSlug, newSlug );
+							closeReplaceModal();
+						} );
+					} );
+			}
+
+			replaceModal.classList.add( 'is-open' );
+			replaceModal.setAttribute( 'aria-hidden', 'false' );
+		};
+
+		const closeReplaceModal = () => {
+			if ( replaceModal ) {
+				replaceModal.classList.remove( 'is-open' );
+				replaceModal.setAttribute( 'aria-hidden', 'true' );
+			}
+			replacingSlug = null;
+		};
+
+		const performReplacement = ( oldSlug, newSlug ) => {
+			const newCandidate = allCandidates.find(
+				( c ) => c.slug === newSlug
+			);
+			if ( ! newCandidate ) {
+				return;
+			}
+
+			// Find index of item to replace
+			const idx = currentItems.findIndex( ( i ) => i.slug === oldSlug );
+			if ( idx === -1 ) {
+				return;
+			}
+
+			// Create new item from candidate
+			const newItem = {
+				slug: newCandidate.slug,
+				title: newCandidate.data?.name || newCandidate.slug,
+				description: newCandidate.data?.vibe_summary || '',
+				order: currentItems[ idx ].order,
+			};
+
+			// Replace in array
+			currentItems[ idx ] = newItem;
+
+			// Re-render
+			renderList( currentItems );
+
+			// Update meta text
+			if ( metaText ) {
+				const duration = form.querySelector(
+					'select[name="duration"]'
+				).value;
+				metaText.textContent = `${ currentItems.length } venues found • ${ duration } hours available`;
+			}
+
+			// Track analytics
+			trackEvent( 'item_replaced', null, {
+				old_slug: oldSlug,
+				new_slug: newSlug,
+			} );
+		};
+
+		// Setup replace modal close handlers
+		if ( replaceModal ) {
+			replaceModal
+				.querySelectorAll( '[data-modal-close]' )
+				.forEach( ( el ) => {
+					el.onclick = ( e ) => {
+						e.preventDefault();
+						closeReplaceModal();
+					};
+				} );
+		}
 
 		// Initial Render
 		renderList( currentItems );
@@ -698,13 +857,21 @@ const initItineraryForm = () => {
 					</html>
 				`;
 
-				const printWindow = window.open( '', '_blank' );
-				printWindow.document.write( printContent );
-				printWindow.document.close();
-				printWindow.print();
+				// Track event first (before potential popup blocker issues)
 				trackEvent( 'share_download_pdf', null, {
 					venues: itineraryItems.length,
 				} );
+
+				const printWindow = window.open( '', '_blank' );
+				if ( ! printWindow ) {
+					alert(
+						'Please allow popups for this site to download your itinerary.'
+					);
+					return;
+				}
+				printWindow.document.write( printContent );
+				printWindow.document.close();
+				printWindow.print();
 			};
 		}
 
