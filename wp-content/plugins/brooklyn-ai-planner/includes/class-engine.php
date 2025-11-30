@@ -1,14 +1,15 @@
 <?php
 /**
- * Recommendation Engine Core.
+ * Recommendation Engine Core (Google Places API Version).
  *
- * Orchestrates the multi-stage itinerary generation pipeline:
+ * Orchestrates the itinerary generation pipeline:
  * 0. Guardrails (Rate limit, Validation)
- * 1. K-Means Lookup (Pinecone)
- * 2. RAG Semantic Search (Pinecone)
- * 3. MBA Boost (Supabase Association Rules)
- * 4. Filters & Constraints (Google Maps, Time, Budget)
- * 5. LLM Ordering (Gemini)
+ * 1. Query Google Places API (by interest type)
+ * 2. Fetch Details for top candidates
+ * 3. Hard Filters (hours, distance, accessibility, budget)
+ * 4. (Optional) LLM Ordering (Gemini)
+ * 5. Get Directions (Google Directions API)
+ * 6. Build Response + Cache + Log
  *
  * @package BrooklynAI
  */
@@ -17,7 +18,8 @@ namespace BrooklynAI;
 
 use BrooklynAI\Clients\Gemini_Client;
 use BrooklynAI\Clients\GoogleMaps_Client;
-use BrooklynAI\Clients\Pinecone_Client;
+use BrooklynAI\Clients\Google_Places_Client;
+use BrooklynAI\Clients\Google_Directions_Client;
 use BrooklynAI\Clients\Supabase_Client;
 use WP_Error;
 
@@ -26,46 +28,73 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 class Engine {
-	private const VENUE_SELECT_FIELDS   = 'id,slug,name,borough,categories,latitude,longitude,budget,vibe_summary,is_sbrn_member,accessibility,website,phone,address,hours';
-	private const PINECONE_INDEX_NAME   = 'visit-brooklyn-ai-trip-planner';
-	private const MBA_SELECT_FIELDS   = 'seed_slug,recommendation_slug,lift,confidence';
-	private const MBA_MAX_SEEDS       = 5;
-	private const MBA_MIN_LIFT        = 1.2;
-	private const SBRN_BOOST          = 1.2;
 	private const LLM_MAX_CANDIDATES  = 12;
-	private const LLM_PROMPT_VERSION  = 'v1';
+	private const LLM_PROMPT_VERSION  = 'v2';
+	private const PLACES_RADIUS       = 3000; // 3km
+	private const MAX_DETAILS_FETCH   = 15;
+	private const MIN_VENUES_REQUIRED = 1;
+
+	/**
+	 * Interest to Google Places type mapping.
+	 *
+	 * @var array<string, string>
+	 */
+	private const INTEREST_TYPE_MAP = array(
+		'food'          => 'restaurant',
+		'restaurants'   => 'restaurant',
+		'dining'        => 'restaurant',
+		'art'           => 'museum',
+		'museums'       => 'museum',
+		'culture'       => 'museum',
+		'parks'         => 'park',
+		'outdoors'      => 'park',
+		'nature'        => 'park',
+		'shopping'      => 'shopping_mall',
+		'fitness'       => 'gym',
+		'coffee'        => 'cafe',
+		'cafes'         => 'cafe',
+		'entertainment' => 'movie_theater',
+		'movies'        => 'movie_theater',
+		'drinks'        => 'bar',
+		'bars'          => 'bar',
+		'nightlife'     => 'night_club',
+		'clubs'         => 'night_club',
+		'music'         => 'night_club',
+		'history'       => 'museum',
+		'attractions'   => 'tourist_attraction',
+	);
 
 	private Security_Manager $security;
 	private Cache_Service $cache;
-	private Pinecone_Client $pinecone;
 	private Supabase_Client $supabase;
-	private GoogleMaps_Client $maps;
-	private Gemini_Client $gemini;
+	private ?Google_Places_Client $places;
+	private ?Google_Directions_Client $directions;
+	private ?GoogleMaps_Client $maps;
+	private ?Gemini_Client $gemini;
 	private Analytics_Logger $analytics;
-	private bool $pinecone_available = true;
-	/** @var array<string, array<string, mixed>> */
-	private array $venue_cache = array();
 
 	public function __construct(
 		Security_Manager $security,
 		Cache_Service $cache,
-		Pinecone_Client $pinecone,
 		Supabase_Client $supabase,
-		GoogleMaps_Client $maps,
-		Gemini_Client $gemini,
+		?Google_Places_Client $places,
+		?Google_Directions_Client $directions,
+		?GoogleMaps_Client $maps,
+		?Gemini_Client $gemini,
 		Analytics_Logger $analytics
 	) {
-		$this->security  = $security;
-		$this->cache     = $cache;
-		$this->pinecone  = $pinecone;
-		$this->supabase  = $supabase;
-		$this->maps      = $maps;
-		$this->gemini    = $gemini;
-		$this->analytics = $analytics;
+		$this->security   = $security;
+		$this->cache      = $cache;
+		$this->supabase   = $supabase;
+		$this->places     = $places;
+		$this->directions = $directions;
+		$this->maps       = $maps;
+		$this->gemini     = $gemini;
+		$this->analytics  = $analytics;
 	}
 
 	/**
-	 * Generates a personalized itinerary.
+	 * Generates a personalized itinerary using Google Places API.
 	 *
 	 * @param array<string, mixed> $request Raw request parameters.
 	 * @return array<string, mixed>|WP_Error
@@ -77,7 +106,6 @@ class Engine {
 		// Stage 0: Guardrails
 		$validated = $this->stage_guardrails( $request );
 		if ( is_wp_error( $validated ) ) {
-			$this->log_stage_error( 'guardrails', $validated );
 			error_log( 'BATP: Guardrails failed: ' . $validated->get_error_message() );
 			return $validated;
 		}
@@ -85,1050 +113,569 @@ class Engine {
 		// Check Cache
 		$cached = $this->cache->get( 'itinerary', $validated );
 		if ( $cached ) {
-			$this->log_stage_success( 'cache_hit', array( 'duration' => microtime( true ) - $start_time ) );
-			error_log( 'BATP: Cache hit returning cached itinerary.' );
+			error_log( 'BATP: Cache hit - returning cached itinerary.' );
+			// Still log analytics for cache hits (each request counts)
+			$this->log_itinerary( $validated, $cached );
 			return $cached;
 		}
 
-		// Stage 1: K-Means Lookup (Candidate Retrieval)
-		$candidates = $this->stage_kmeans_lookup( $validated );
-		if ( is_wp_error( $candidates ) ) {
-			$this->log_stage_error( 'kmeans', $candidates );
-			error_log( 'BATP: K-Means failed: ' . $candidates->get_error_message() );
-			return $candidates;
-		}
-		$this->log_stage_success( 'kmeans', array( 'count' => count( $candidates ) ) );
-		error_log( 'BATP: K-Means candidates found: ' . count( $candidates ) );
-
-		// Stage 2: Semantic RAG (Pinecone semantic search)
-		$semantic = $this->stage_semantic_rag( $validated, $candidates );
-		if ( is_wp_error( $semantic ) ) {
-			$this->log_stage_error( 'semantic', $semantic );
-			error_log( 'BATP: Semantic RAG failed: ' . $semantic->get_error_message() );
-			return $semantic;
-		}
-		$candidates = $semantic;
-		$this->log_stage_success( 'semantic', array( 'count' => count( $candidates ) ) );
-		error_log( 'BATP: Semantic RAG count: ' . count( $candidates ) );
-
-		// Stage 3: MBA boost
-		$boosted = $this->stage_mba_boost( $candidates );
-		if ( is_wp_error( $boosted ) ) {
-			$this->log_stage_error( 'mba', $boosted );
-			// Non-fatal error: Log it and proceed with original candidates
-			error_log( 'BATP: MBA Boost failed (non-fatal): ' . $boosted->get_error_message() );
-			$candidates = $candidates;
-		} else {
-			$candidates = $boosted;
-			$this->log_stage_success( 'mba', array( 'count' => count( $candidates ) ) );
+		// Check if Google Places is configured
+		if ( null === $this->places ) {
+			return new WP_Error( 'batp_places_not_configured', __( 'Google Places API is not configured.', 'brooklyn-ai-planner' ) );
 		}
 
-		// Stage 4: Filters & constraints
-		$filtered = $this->stage_filters_and_constraints( $validated, $candidates );
+		// Stage 1: Query Google Places API for each interest
+		$all_venues = $this->stage_places_search( $validated );
+		if ( is_wp_error( $all_venues ) ) {
+			error_log( 'BATP: Places search failed: ' . $all_venues->get_error_message() );
+			return $all_venues;
+		}
+
+		if ( empty( $all_venues ) ) {
+			return new WP_Error( 'batp_no_venues', __( 'No venues found matching your criteria. Try different interests or location.', 'brooklyn-ai-planner' ) );
+		}
+
+		error_log( 'BATP: Places search returned ' . count( $all_venues ) . ' candidates.' );
+
+		// Stage 2: Fetch details for top candidates
+		$detailed_venues = $this->stage_fetch_details( $all_venues );
+		if ( is_wp_error( $detailed_venues ) ) {
+			error_log( 'BATP: Details fetch failed: ' . $detailed_venues->get_error_message() );
+			return $detailed_venues;
+		}
+
+		error_log( 'BATP: Fetched details for ' . count( $detailed_venues ) . ' venues.' );
+
+		// Stage 3: Apply hard filters
+		$filtered = $this->stage_apply_filters( $validated, $detailed_venues );
 		if ( is_wp_error( $filtered ) ) {
-			$this->log_stage_error( 'filters', $filtered );
+			error_log( 'BATP: Filtering failed: ' . $filtered->get_error_message() );
 			return $filtered;
 		}
-		$candidates = $filtered;
-		$this->log_stage_success( 'filters', array( 'count' => count( $candidates ) ) );
-		error_log( 'BATP: Post-filter candidates: ' . count( $candidates ) );
 
-		// Stage 5: LLM ordering
-		$ordered = $this->stage_llm_ordering( $validated, $candidates );
-		if ( is_wp_error( $ordered ) ) {
-			$this->log_stage_error( 'llm', $ordered );
-			error_log( 'BATP: LLM ordering failed: ' . $ordered->get_error_message() );
-			return $ordered;
+		if ( count( $filtered ) < self::MIN_VENUES_REQUIRED ) {
+			return new WP_Error( 'batp_no_venues_after_filter', __( 'No venues match your filters. Try relaxing your constraints.', 'brooklyn-ai-planner' ) );
 		}
-		$candidates = $ordered['candidates'];
-		$itinerary  = $ordered['itinerary'];
-		$meta       = array_merge( $ordered['meta'], array( 'duration' => microtime( true ) - $start_time ) );
-		$status     = empty( $itinerary['items'] ) ? 'partial' : 'complete';
-		$this->log_stage_success( 'llm', array( 'items' => count( $itinerary['items'] ?? array() ) ) );
-		error_log( 'BATP: Itinerary items generated: ' . count( $itinerary['items'] ?? array() ) );
 
-		$response = array(
-			'candidates' => $candidates,
-			'itinerary'  => $itinerary,
-			'meta'       => $meta,
-			'status'     => $status,
+		error_log( 'BATP: After filtering: ' . count( $filtered ) . ' venues.' );
+
+		// Stage 4: LLM ordering (optional, for >3 venues)
+		$ordered = $this->stage_llm_ordering( $validated, $filtered );
+		if ( is_wp_error( $ordered ) ) {
+			// Non-fatal - use simple proximity sort
+			error_log( 'BATP: LLM ordering failed (using proximity sort): ' . $ordered->get_error_message() );
+			$ordered = $this->simple_sort_by_rating( $filtered );
+		}
+
+		error_log( 'BATP: Ordered ' . count( $ordered ) . ' venues.' );
+
+		// Stage 5: Get directions
+		$directions_data = $this->stage_get_directions( $validated, $ordered );
+		if ( is_wp_error( $directions_data ) ) {
+			// Non-fatal - continue without polyline
+			error_log( 'BATP: Directions failed (continuing without route): ' . $directions_data->get_error_message() );
+			$directions_data = array(
+				'polyline'     => '',
+				'legs'         => array(),
+				'total_text'   => '',
+				'overview_url' => '#',
+			);
+		}
+
+		// Build final response
+		$normalized = $this->normalize_venues_for_response( $ordered );
+		$itinerary  = $this->build_itinerary( $normalized, $directions_data );
+		$meta       = array(
+			'duration'     => microtime( true ) - $start_time,
+			'venue_count'  => count( $normalized ),
+			'pipeline'     => 'google_places_v2',
+			'total_travel' => $directions_data['total_text'] ?? '',
 		);
 
-		$this->cache->set( 'itinerary', $validated, $response, Cache_Service::TTL_GEMINI );
+		$response = array(
+			'candidates' => $normalized,
+			'itinerary'  => $itinerary,
+			'directions' => $directions_data,
+			'meta'       => $meta,
+			'status'     => 'complete',
+		);
+
+		// Cache the response
+		$this->cache->set( 'itinerary', $validated, $response, HOUR_IN_SECONDS * 24 );
+
+		// Log analytics
+		$this->log_itinerary( $validated, $response );
+
+		error_log( 'BATP: Itinerary generation complete. Venues: ' . count( $normalized ) );
 
 		return $response;
 	}
 
 	/**
-	 * Stage 0: Guardrails.
-	 * Validates input, checks rate limits and nonces.
+	 * Stage 0: Guardrails - Rate limit and input validation.
 	 *
 	 * @param array<string, mixed> $request
 	 * @return array<string, mixed>|WP_Error
 	 */
 	private function stage_guardrails( array $request ) {
-		// 1. Nonce Check (Frontend should send 'nonce')
-		if ( ! isset( $request['nonce'] ) ) {
-			return new WP_Error( 'batp_invalid_nonce', __( 'Invalid security token.', 'brooklyn-ai-planner' ), array( 'status' => 403 ) );
+		// Rate limit check
+		$rate_check = $this->security->enforce_rate_limit();
+		if ( is_wp_error( $rate_check ) ) {
+			return $rate_check;
 		}
 
-		if ( ! wp_verify_nonce( $request['nonce'], 'batp_generate_itinerary' ) ) {
-			error_log( sprintf( 'BATP nonce failed for user %d, token %s', get_current_user_id(), $request['nonce'] ) );
-			return new WP_Error( 'batp_invalid_nonce', __( 'Invalid security token.', 'brooklyn-ai-planner' ), array( 'status' => 403 ) );
+		// Validate required fields
+		$lat = isset( $request['lat'] ) ? (float) $request['lat'] : 0;
+		$lng = isset( $request['lng'] ) ? (float) $request['lng'] : 0;
+
+		if ( 0 === $lat || 0 === $lng ) {
+			// Default to central Brooklyn
+			$lat = 40.6782;
+			$lng = -73.9442;
 		}
 
-		// 2. Rate Limit
-		$rate_limit = $this->security->enforce_rate_limit();
-		if ( is_wp_error( $rate_limit ) ) {
-			return $rate_limit;
+		// Validate coordinates are in NYC area
+		if ( $lat < 40.4 || $lat > 41.0 || $lng < -74.3 || $lng > -73.5 ) {
+			return new WP_Error( 'batp_invalid_location', __( 'Location must be within the New York City area.', 'brooklyn-ai-planner' ) );
 		}
 
-		// 3. Input Validation
-		$defaults = array(
-			'interests'   => array(),
-			'budget'      => 'medium', // low, medium, high
-			'time_window' => 240, // minutes
-			'latitude'    => null,
-			'longitude'   => null,
+		$interests = isset( $request['interests'] ) && is_array( $request['interests'] )
+			? array_map( 'sanitize_text_field', $request['interests'] )
+			: array( 'food', 'art' );
+
+		if ( empty( $interests ) ) {
+			$interests = array( 'food', 'art' );
+		}
+
+		$time_window = isset( $request['time_window'] ) ? absint( $request['time_window'] ) : 240;
+		$time_window = max( 60, min( 480, $time_window ) ); // 1-8 hours
+
+		$budget = isset( $request['budget'] ) ? sanitize_text_field( $request['budget'] ) : 'medium';
+		$mode   = isset( $request['mode'] ) ? sanitize_text_field( $request['mode'] ) : 'walking';
+
+		$accessibility = isset( $request['accessibility_preferences'] ) && is_array( $request['accessibility_preferences'] )
+			? array_map( 'sanitize_text_field', $request['accessibility_preferences'] )
+			: array();
+
+		return array(
+			'lat'                       => $lat,
+			'lng'                       => $lng,
+			'interests'                 => $interests,
+			'time_window'               => $time_window,
+			'budget'                    => $budget,
+			'mode'                      => $mode,
+			'accessibility_preferences' => $accessibility,
 		);
-
-		$data = array_merge( $defaults, $request );
-
-		if ( ! is_array( $data['interests'] ) ) {
-			return new WP_Error( 'batp_invalid_input', __( 'Interests must be an array.', 'brooklyn-ai-planner' ) );
-		}
-
-		if ( ! is_numeric( $data['time_window'] ) || $data['time_window'] < 30 || $data['time_window'] > 720 ) {
-			return new WP_Error( 'batp_invalid_input', __( 'Time window must be between 30 minutes and 12 hours.', 'brooklyn-ai-planner' ) );
-		}
-
-		if ( null !== $data['latitude'] && ( ! is_numeric( $data['latitude'] ) || $data['latitude'] < -90 || $data['latitude'] > 90 ) ) {
-			return new WP_Error( 'batp_invalid_input', __( 'Invalid latitude.', 'brooklyn-ai-planner' ) );
-		}
-
-		return $data;
 	}
 
 	/**
-	 * Stage 1: K-Means Lookup.
-	 * Finds closest centroid in Pinecone and retrieves candidates from Supabase.
+	 * Stage 1: Query Google Places API for each interest.
 	 *
-	 * @param array<string, mixed> $data
+	 * @param array<string, mixed> $validated
 	 * @return array<int, array<string, mixed>>|WP_Error
 	 */
-	private function stage_kmeans_lookup( array $data ) {
-		// If no location provided, we might need a fallback or default centroid strategy.
-		// For now, assuming user location or Brooklyn center.
-		$lat = $data['latitude'] ?? 40.6782; // Default to Brooklyn center
-		$lng = $data['longitude'] ?? -73.9442;
+	private function stage_places_search( array $validated ) {
+		$all_venues = array();
+		$seen_ids   = array();
 
-		// 1. Query Pinecone for centroids
-		// Note: This assumes a separate index or namespace for centroids, or a metadata filter.
-		// Here we assume a 'centroids' namespace.
-		error_log( "BATP: Pinecone query at lat: $lat, lng: $lng" );
-		// Query Pinecone with geo-filter for nearby venues
-		$results = $this->pinecone->query(
-			self::PINECONE_INDEX_NAME,
-			array(
-				'vector'          => array_fill( 0, 768, 0.01 ), // Small non-zero vector for geo-filter queries
-				'topK'            => 50,
-				'includeMetadata' => true,
-				'filter'          => array(
-					'latitude'  => array(
-						'$gte' => $lat - 0.05,
-						'$lte' => $lat + 0.05,
-					),
-					'longitude' => array(
-						'$gte' => $lng - 0.05,
-						'$lte' => $lng + 0.05,
-					),
-				),
-			)
-		);
+		foreach ( $validated['interests'] as $interest ) {
+			$places_type = $this->map_interest_to_places_type( $interest );
 
-		if ( is_wp_error( $results ) ) {
-			error_log( 'BATP: Pinecone query error: ' . $results->get_error_message() );
-			if ( 'http_request_failed' === $results->get_error_code() ) {
-				$this->pinecone_available = false;
-				$this->log_stage_error( 'pinecone_connect', $results );
-				error_log( 'BATP: Pinecone unavailable, attempting Supabase fallback.' );
-				$fallback = $this->load_supabase_fallback_candidates();
-				error_log( 'BATP: Supabase fallback count: ' . count( $fallback ) );
-				if ( ! empty( $fallback ) ) {
-					return $fallback;
-				}
-				return array();
-			}
+			error_log( "BATP: Searching Places for interest='{$interest}' → type='{$places_type}'" );
 
-			return $results;
-		}
-
-		error_log( 'BATP: Pinecone query raw match count: ' . count( $results['matches'] ?? array() ) );
-
-		$matches = $results['matches'] ?? array();
-		if ( empty( $matches ) ) {
-			return array();
-		}
-
-		$ordered_matches = array();
-		$slugs           = array();
-		foreach ( $matches as $match ) {
-			if ( ! isset( $match['id'] ) ) {
-				continue;
-			}
-
-			$slug = sanitize_text_field( (string) $match['id'] );
-			if ( '' === $slug ) {
-				continue;
-			}
-
-			$ordered_matches[] = array(
-				'slug'  => $slug,
-				'score' => isset( $match['score'] ) ? (float) $match['score'] : null,
+			$results = $this->places->nearby_search(
+				$validated['lat'],
+				$validated['lng'],
+				$places_type,
+				self::PLACES_RADIUS,
+				true // open_now
 			);
-			$slugs[]           = $slug;
-		}
 
-		if ( empty( $ordered_matches ) ) {
-			return array();
-		}
-
-		$unique_slugs = array_values( array_unique( $slugs ) );
-		error_log( 'BATP: Unique slugs from Pinecone: ' . implode( ', ', $unique_slugs ) );
-		$records = $this->load_venues_by_slugs( $unique_slugs );
-		if ( is_wp_error( $records ) ) {
-			error_log( 'BATP: Supabase load venues error: ' . $records->get_error_message() );
-			return $records;
-		}
-		error_log( 'BATP: Venues loaded from Supabase: ' . count( $records ) );
-
-		foreach ( $records as $slug => $record ) {
-			$this->cache_venue_record( $slug, $record );
-		}
-
-		$candidates = array();
-		foreach ( $ordered_matches as $match ) {
-			$slug = $match['slug'];
-			$data = $this->venue_cache[ $slug ] ?? array( 'slug' => $slug );
-
-			$candidates[] = array(
-				'slug'    => $slug,
-				'score'   => $match['score'],
-				'data'    => $data,
-				'sources' => array( 'kmeans' ),
-			);
-		}
-
-		return $candidates;
-	}
-
-	/**
-	 * Stage 2: Semantic RAG search using embeddings + Pinecone.
-	 *
-	 * @param array<string, mixed>              $data
-	 * @param array<int, array<string, mixed>>  $seed_candidates
-	 * @return array<int, array<string, mixed>>|WP_Error
-	 */
-	private function stage_semantic_rag( array $data, array $seed_candidates ) {
-		if ( ! $this->pinecone_available || empty( $data['interests'] ) ) {
-			return $seed_candidates;
-		}
-
-		$prompt    = $this->build_interest_prompt( $data );
-		$embedding = $this->get_interest_embedding( $prompt );
-		if ( is_wp_error( $embedding ) ) {
-			return $embedding;
-		}
-
-		$payload = array(
-			'includeMetadata' => true,
-			'topK'            => 40,
-			'vector'          => $embedding,
-		);
-
-		if ( isset( $data['latitude'], $data['longitude'] ) && is_numeric( $data['latitude'] ) && is_numeric( $data['longitude'] ) ) {
-			$payload['filter'] = array(
-				'latitude'  => array(
-					'$gte' => (float) $data['latitude'] - 0.05,
-					'$lte' => (float) $data['latitude'] + 0.05,
-				),
-				'longitude' => array(
-					'$gte' => (float) $data['longitude'] - 0.05,
-					'$lte' => (float) $data['longitude'] + 0.05,
-				),
-			);
-		}
-
-		$results = $this->pinecone->query( self::PINECONE_INDEX_NAME, $payload );
-		if ( is_wp_error( $results ) ) {
-			if ( 'http_request_failed' === $results->get_error_code() ) {
-				$this->pinecone_available = false;
-				$this->log_stage_error( 'pinecone_semantic', $results );
-				if ( ! empty( $seed_candidates ) ) {
-					return $seed_candidates;
-				}
-				$fallback = $this->load_supabase_fallback_candidates();
-				if ( ! empty( $fallback ) ) {
-					return $fallback;
-				}
-			}
-			return $results;
-		}
-
-		$matches = $results['matches'] ?? array();
-		if ( empty( $matches ) ) {
-			return $seed_candidates;
-		}
-
-		$semantic_candidates = array();
-		foreach ( $matches as $match ) {
-			$slug = $this->normalize_slug( $match['metadata']['slug'] ?? $match['id'] ?? null );
-			if ( '' === $slug ) {
-				continue;
+			if ( is_wp_error( $results ) ) {
+				error_log( 'BATP: Places search error for ' . $interest . ': ' . $results->get_error_message() );
+				continue; // Skip this interest, try others
 			}
 
-			if ( isset( $match['metadata'] ) && is_array( $match['metadata'] ) ) {
-				$this->cache_venue_record( $slug, $match['metadata'] );
-			}
-
-			$data = $this->venue_cache[ $slug ] ?? array( 'slug' => $slug );
-
-			$semantic_candidates[] = array(
-				'slug'    => $slug,
-				'score'   => isset( $match['score'] ) ? (float) $match['score'] : null,
-				'data'    => $data,
-				'sources' => array( 'semantic' ),
-
-			);
-		}
-
-		return $this->merge_candidates( $seed_candidates, $semantic_candidates );
-	}
-
-	/**
-	 * Fallback when Pinecone is unavailable: load recent venues directly from Supabase.
-	 *
-	 * @return array<int, array<string, mixed>>
-	 */
-	private function load_supabase_fallback_candidates(): array {
-		error_log( 'BATP: Loading Supabase fallback candidates.' );
-		$response = $this->supabase->select(
-			'venues',
-			array(
-				'select' => self::VENUE_SELECT_FIELDS,
-				'limit'  => 25,
-			)
-		);
-
-		if ( is_wp_error( $response ) ) {
-			error_log( 'BATP: Supabase select error: ' . $response->get_error_message() );
-			return array();
-		}
-
-		if ( empty( $response ) ) {
-			error_log( 'BATP: Supabase select returned empty result.' );
-			return array();
-		}
-
-		error_log( 'BATP: Supabase fallback found ' . count( $response ) . ' records.' );
-
-		$candidates = array();
-		foreach ( $response as $record ) {
-			if ( empty( $record['slug'] ) ) {
-				continue;
-			}
-
-			$slug = $this->normalize_slug( $record['slug'] );
-			$this->cache_venue_record( $slug, $record );
-			$candidates[] = array(
-				'slug'    => $slug,
-				'score'   => null,
-				'data'    => $record,
-				'sources' => array( 'supabase_fallback' ),
-			);
-		}
-
-		return $candidates;
-	}
-
-	/**
-	 * @param array<int, array<string, mixed>> $seed
-	 * @param array<int, array<string, mixed>> $semantic
-	 * @return array<int, array<string, mixed>>
-	 */
-	private function merge_candidates( array $seed, array $semantic ): array {
-		$combined = array();
-
-		foreach ( $seed as $candidate ) {
-			$slug              = $candidate['slug'];
-			$combined[ $slug ] = $candidate;
-		}
-
-		foreach ( $semantic as $candidate ) {
-			$slug = $candidate['slug'];
-			if ( isset( $combined[ $slug ] ) ) {
-				$combined[ $slug ]['score']   = $this->combine_scores( $combined[ $slug ]['score'], $candidate['score'] );
-				$combined[ $slug ]['sources'] = array_values( array_unique( array_merge( $combined[ $slug ]['sources'], $candidate['sources'] ) ) );
-				continue;
-			}
-
-			$combined[ $slug ] = $candidate;
-		}
-
-		return array_values( $combined );
-	}
-
-	private function combine_scores( $primary, $secondary ) {
-		if ( null === $primary ) {
-			return $secondary;
-		}
-
-		if ( null === $secondary ) {
-			return $primary;
-		}
-
-		return max( $primary, $secondary );
-	}
-
-	/**
-	 * @param array<int, array<string, mixed>> $candidates
-	 * @return array<int, array<string, mixed>>|WP_Error
-	 */
-	private function stage_mba_boost( array $candidates ) {
-		if ( empty( $candidates ) ) {
-			return $candidates;
-		}
-
-		$seed_slugs = $this->determine_seed_slugs( $candidates );
-		if ( empty( $seed_slugs ) ) {
-			return $candidates;
-		}
-
-		$rules = $this->load_association_rules( $seed_slugs );
-		if ( is_wp_error( $rules ) ) {
-			return $rules;
-		}
-
-		$indexed_rules = $this->index_mba_rules( $rules );
-		if ( empty( $indexed_rules ) ) {
-			return $candidates;
-		}
-
-		foreach ( $candidates as &$candidate ) {
-			$slug = $candidate['slug'] ?? '';
-			if ( isset( $indexed_rules[ $slug ] ) ) {
-				$boost                = $indexed_rules[ $slug ];
-				$candidate['score']   = $this->apply_lift( $candidate['score'] ?? null, $boost['lift'] );
-				$existing_sources     = isset( $candidate['sources'] ) && is_array( $candidate['sources'] ) ? $candidate['sources'] : array();
-				$candidate['sources'] = array_values( array_unique( array_merge( $existing_sources, array( 'mba' ) ) ) );
-				$meta                 = isset( $candidate['meta'] ) && is_array( $candidate['meta'] ) ? $candidate['meta'] : array();
-				$meta['mba']          = array(
-					'seed'       => $boost['seed'],
-					'lift'       => $boost['lift'],
-					'confidence' => $boost['confidence'],
-				);
-				$candidate['meta']    = $meta;
-			}
-		}
-		unset( $candidate );
-
-		return $candidates;
-	}
-
-	/**
-	 * @param array<int, array<string, mixed>> $candidates
-	 * @return array<int, string>
-	 */
-	private function determine_seed_slugs( array $candidates ): array {
-		$sorted = $candidates;
-		usort(
-			$sorted,
-			function ( $a, $b ) {
-				$score_a = isset( $a['score'] ) ? (float) $a['score'] : 0.0;
-				$score_b = isset( $b['score'] ) ? (float) $b['score'] : 0.0;
-				return $score_b <=> $score_a;
-			}
-		);
-
-		$seeds = array();
-		foreach ( $sorted as $candidate ) {
-			$slug = $this->normalize_slug( $candidate['slug'] ?? null );
-			if ( '' === $slug ) {
-				continue;
-			}
-
-			if ( ! in_array( $slug, $seeds, true ) ) {
-				$seeds[] = $slug;
-			}
-
-			if ( count( $seeds ) >= self::MBA_MAX_SEEDS ) {
-				break;
-			}
-		}
-
-		return $seeds;
-	}
-
-	/**
-	 * @param array<int, string> $seed_slugs
-	 * @return array<int, array<string, mixed>>|WP_Error
-	 */
-	private function load_association_rules( array $seed_slugs ) {
-		if ( empty( $seed_slugs ) ) {
-			return array();
-		}
-
-		return $this->supabase->select_in(
-			'association_rules',
-			'seed_slug',
-			$seed_slugs,
-			array(
-				'select' => self::MBA_SELECT_FIELDS,
-				'limit'  => 200,
-				'order'  => 'lift.desc',
-			)
-		);
-	}
-
-	/**
-	 * @param array<int, array<string, mixed>> $rules
-	 * @return array<string, array{seed:string,lift:float,confidence:float|null}>
-	 */
-	private function index_mba_rules( array $rules ): array {
-		$indexed = array();
-
-		foreach ( $rules as $rule ) {
-			$seed       = $this->normalize_slug( $rule['seed_slug'] ?? null );
-			$recommend  = $this->normalize_slug( $rule['recommendation_slug'] ?? null );
-			$lift       = isset( $rule['lift'] ) ? (float) $rule['lift'] : 0.0;
-			$confidence = isset( $rule['confidence'] ) ? (float) $rule['confidence'] : null;
-
-			if ( '' === $seed || '' === $recommend || $lift < self::MBA_MIN_LIFT ) {
-				continue;
-			}
-
-			if ( ! isset( $indexed[ $recommend ] ) || $lift > $indexed[ $recommend ]['lift'] ) {
-				$indexed[ $recommend ] = array(
-					'seed'       => $seed,
-					'lift'       => $lift,
-					'confidence' => $confidence,
-				);
-			}
-		}
-
-		return $indexed;
-	}
-
-	private function apply_lift( $score, float $lift ) {
-		if ( null === $score ) {
-			return $lift;
-		}
-
-		return $score * $lift;
-	}
-
-	/**
-	 * @param array<string, mixed>             $request
-	 * @param array<int, array<string, mixed>> $candidates
-	 * @return array<int, array<string, mixed>>|WP_Error
-	 */
-	private function stage_filters_and_constraints( array $request, array $candidates ) {
-		$result   = $this->apply_budget_filter( $request, $candidates );
-		$result   = $this->apply_accessibility_filter( $request, $result );
-		$distance = $this->apply_distance_constraint( $request, $result );
-		if ( is_wp_error( $distance ) ) {
-			return $distance;
-		}
-		$result = $distance;
-		$result = $this->apply_sbrn_boost( $result );
-
-		return $result;
-	}
-
-	/**
-	 * @param array<string, mixed>             $request
-	 * @param array<int, array<string, mixed>> $candidates
-	 * @return array<int, array<string, mixed>>
-	 */
-	private function apply_budget_filter( array $request, array $candidates ): array {
-		$requested = $this->normalize_budget( $request['budget'] ?? 'medium' );
-		if ( null === $requested ) {
-			return $candidates;
-		}
-
-		return array_values(
-			array_filter(
-				$candidates,
-				function ( $candidate ) use ( $requested ) {
-					$budget = isset( $candidate['data']['budget'] ) ? $this->normalize_budget( $candidate['data']['budget'] ) : null;
-					if ( null === $budget ) {
-						return true;
-					}
-
-					return $budget <= $requested;
-				}
-			)
-		);
-	}
-
-	private function normalize_budget( $budget ): ?int {
-		$map = array(
-			'low'    => 1,
-			'medium' => 2,
-			'high'   => 3,
-		);
-
-		if ( ! is_string( $budget ) ) {
-			return null;
-		}
-
-		$normalized = strtolower( sanitize_text_field( $budget ) );
-		return $map[ $normalized ] ?? null;
-	}
-
-	/**
-	 * @param array<string, mixed>             $request
-	 * @param array<int, array<string, mixed>> $candidates
-	 * @return array<int, array<string, mixed>>
-	 */
-	private function apply_accessibility_filter( array $request, array $candidates ): array {
-		$preferences = isset( $request['accessibility_preferences'] ) ? $this->sanitize_string_array( (array) $request['accessibility_preferences'] ) : array();
-		if ( empty( $preferences ) ) {
-			return $candidates;
-		}
-
-		return array_values(
-			array_filter(
-				$candidates,
-				function ( $candidate ) use ( $preferences ) {
-					$data       = isset( $candidate['data']['accessibility'] ) ? $candidate['data']['accessibility'] : array();
-					$attributes = $this->sanitize_string_array( (array) $data );
-					if ( empty( $attributes ) ) {
-						return false;
-					}
-
-					return empty( array_diff( $preferences, $attributes ) );
-				}
-			)
-		);
-	}
-
-	/**
-	 * @param array<int, string> $values
-	 * @return array<int, string>
-	 */
-	private function sanitize_string_array( array $values ): array {
-		$clean = array();
-		foreach ( $values as $value ) {
-			if ( is_scalar( $value ) ) {
-				$normalized = sanitize_key( $value );
-				if ( '' !== $normalized ) {
-					$clean[] = $normalized;
-				}
-			}
-		}
-
-		return array_values( array_unique( $clean ) );
-	}
-
-	/**
-	 * @param array<string, mixed>             $request
-	 * @param array<int, array<string, mixed>> $candidates
-	 * @return array<int, array<string, mixed>>|WP_Error
-	 */
-	private function apply_distance_constraint( array $request, array $candidates ) {
-		$origin = $this->resolve_origin( $request );
-		if ( null === $origin ) {
-			return $candidates;
-		}
-
-		$destinations = $this->collect_destination_coordinates( $candidates );
-		if ( empty( $destinations ) ) {
-			return $candidates;
-		}
-
-		$matrix = $this->fetch_distance_matrix( $origin, $destinations );
-		if ( is_wp_error( $matrix ) ) {
-			return $matrix;
-		}
-
-		$max_minutes = $this->max_travel_minutes( (int) ( $request['time_window'] ?? 240 ) );
-		$filtered    = array();
-
-		foreach ( $candidates as $candidate ) {
-			$slug = $candidate['slug'] ?? '';
-			if ( isset( $matrix[ $slug ] ) ) {
-				$minutes = $matrix[ $slug ];
-				if ( $minutes > $max_minutes ) {
+			// Dedupe and add to results
+			foreach ( $results as $venue ) {
+				$place_id = $venue['place_id'] ?? '';
+				if ( '' === $place_id || isset( $seen_ids[ $place_id ] ) ) {
 					continue;
 				}
-				$meta                   = isset( $candidate['meta'] ) && is_array( $candidate['meta'] ) ? $candidate['meta'] : array();
-				$meta['travel_minutes'] = $minutes;
-				$candidate['meta']      = $meta;
+
+				$seen_ids[ $place_id ] = true;
+				$venue['interest']     = $interest;
+				$all_venues[]          = $venue;
 			}
-
-			$filtered[] = $candidate;
 		}
 
-		return empty( $filtered ) ? $candidates : array_values( $filtered );
-	}
-
-	private function resolve_origin( array $request ): ?array {
-		if ( isset( $request['latitude'], $request['longitude'] ) && is_numeric( $request['latitude'] ) && is_numeric( $request['longitude'] ) ) {
-			return array(
-				'lat' => (float) $request['latitude'],
-				'lng' => (float) $request['longitude'],
-			);
-		}
-
-		return null;
+		return $all_venues;
 	}
 
 	/**
-	 * @param array<int, array<string, mixed>> $candidates
-	 * @return array<int, array{slug:string,lat:float,lng:float}>
+	 * Stage 2: Fetch detailed information for top candidates.
+	 *
+	 * @param array<int, array<string, mixed>> $venues
+	 * @return array<int, array<string, mixed>>|WP_Error
 	 */
-	private function collect_destination_coordinates( array $candidates ): array {
-		$destinations = array();
-		foreach ( $candidates as $candidate ) {
-			$lat = $candidate['data']['latitude'] ?? null;
-			$lng = $candidate['data']['longitude'] ?? null;
-			if ( is_numeric( $lat ) && is_numeric( $lng ) ) {
-				$destinations[] = array(
-					'slug' => $candidate['slug'],
-					'lat'  => (float) $lat,
-					'lng'  => (float) $lng,
-				);
+	private function stage_fetch_details( array $venues ) {
+		// Sort by rating to prioritize better venues
+		usort(
+			$venues,
+			function ( $a, $b ) {
+				$rating_a = $a['rating'] ?? 0;
+				$rating_b = $b['rating'] ?? 0;
+				return $rating_b <=> $rating_a;
 			}
+		);
+
+		// Limit to top candidates
+		$top_venues = array_slice( $venues, 0, self::MAX_DETAILS_FETCH );
+		$detailed   = array();
+
+		foreach ( $top_venues as $venue ) {
+			$place_id = $venue['place_id'] ?? '';
+			if ( '' === $place_id ) {
+				continue;
+			}
+
+			$details = $this->places->get_details( $place_id );
+			if ( is_wp_error( $details ) ) {
+				error_log( 'BATP: Details fetch failed for ' . $place_id );
+				continue;
+			}
+
+			// Merge basic info with details
+			$details['place_id'] = $place_id;
+			$details['interest'] = $venue['interest'] ?? '';
+			$detailed[]          = $details;
 		}
 
-		return $destinations;
+		return $detailed;
 	}
 
 	/**
-	 * @param array{lat:float,lng:float}                $origin
-	 * @param array<int, array{slug:string,lat:float,lng:float}> $destinations
-	 * @return array<string, int>|WP_Error
+	 * Stage 3: Apply hard filters (hours, budget, accessibility).
+	 *
+	 * @param array<string, mixed>             $validated
+	 * @param array<int, array<string, mixed>> $venues
+	 * @return array<int, array<string, mixed>>|WP_Error
 	 */
-	private function fetch_distance_matrix( array $origin, array $destinations ) {
-		$cache_key = array(
-			'origin'       => $origin,
-			'destinations' => $destinations,
-		);
-		$cached    = $this->cache->get( 'distance', $cache_key );
-		if ( $cached ) {
-			return $cached;
-		}
+	private function stage_apply_filters( array $validated, array $venues ) {
+		$filtered = array();
 
-		$origin_string      = sprintf( '%f,%f', $origin['lat'], $origin['lng'] );
-		$destination_string = implode(
-			'|',
-			array_map(
-				static function ( $destination ) {
-					return sprintf( '%f,%f', $destination['lat'], $destination['lng'] );
-				},
-				$destinations
-			)
-		);
-
-		$params = array(
-			'origins'      => $origin_string,
-			'destinations' => $destination_string,
-			'mode'         => 'walking',
-			'units'        => 'metric',
-		);
-
-		$response = $this->maps->distance_matrix( $params );
-		if ( is_wp_error( $response ) ) {
-			return $response;
-		}
-
-		$durations = array();
-		$elements  = $response['rows'][0]['elements'] ?? array();
-		foreach ( $elements as $index => $element ) {
-			if ( ! isset( $destinations[ $index ] ) ) {
+		foreach ( $venues as $venue ) {
+			// Filter: Business must be operational
+			$status = $venue['business_status'] ?? 'OPERATIONAL';
+			if ( 'OPERATIONAL' !== $status ) {
 				continue;
 			}
 
-			if ( isset( $element['status'] ) && 'OK' !== $element['status'] ) {
+			// Filter: Must be currently open (or no hours data)
+			$is_open = $venue['opening_hours']['open_now'] ?? true;
+			if ( ! $is_open ) {
 				continue;
 			}
 
-			$seconds = isset( $element['duration']['value'] ) ? (int) $element['duration']['value'] : null;
-			if ( null === $seconds ) {
+			// Filter: Budget check via price_level
+			if ( ! $this->passes_budget_filter( $venue, $validated['budget'] ) ) {
 				continue;
 			}
 
-			$slug               = $destinations[ $index ]['slug'];
-			$durations[ $slug ] = (int) ceil( $seconds / 60 );
+			// Filter: Accessibility (if wheelchair access required)
+			if ( in_array( 'wheelchair', $validated['accessibility_preferences'], true ) ) {
+				$wheelchair = $venue['wheelchair_accessible_entrance'] ?? null;
+				if ( false === $wheelchair ) {
+					continue; // Explicitly marked as not accessible
+				}
+			}
+
+			$filtered[] = $venue;
 		}
 
-		$this->cache->set( 'distance', $cache_key, $durations, Cache_Service::TTL_PIPELINE );
+		// Distance filtering via Distance Matrix (if configured)
+		if ( null !== $this->directions && count( $filtered ) > 0 ) {
+			$filtered = $this->filter_by_travel_time( $validated, $filtered );
+		}
 
-		return $durations;
-	}
-
-	private function max_travel_minutes( int $time_window ): int {
-		$minutes = (int) floor( $time_window / 2 );
-		return max( 15, min( 180, $minutes ) );
+		return $filtered;
 	}
 
 	/**
-	 * @param array<int, array<string, mixed>> $candidates
+	 * Check if venue passes budget filter.
+	 *
+	 * @param array<string, mixed> $venue
+	 * @param string               $budget
+	 * @return bool
+	 */
+	private function passes_budget_filter( array $venue, string $budget ): bool {
+		$price_level = $venue['price_level'] ?? 2; // Default to medium
+
+		// Google price_level: 0=Free, 1=Inexpensive, 2=Moderate, 3=Expensive, 4=Very Expensive
+		$budget_max = array(
+			'low'    => 1,
+			'medium' => 2,
+			'high'   => 4,
+		);
+
+		$max_allowed = $budget_max[ $budget ] ?? 3;
+		return $price_level <= $max_allowed;
+	}
+
+	/**
+	 * Filter venues by travel time from user location.
+	 *
+	 * @param array<string, mixed>             $validated
+	 * @param array<int, array<string, mixed>> $venues
 	 * @return array<int, array<string, mixed>>
 	 */
-	private function apply_sbrn_boost( array $candidates ): array {
-		foreach ( $candidates as &$candidate ) {
-			$is_member = ! empty( $candidate['data']['is_sbrn_member'] );
-			if ( ! $is_member ) {
+	private function filter_by_travel_time( array $validated, array $venues ): array {
+		// Max travel time per venue (leave time for visiting)
+		$max_travel_minutes = min( 30, $validated['time_window'] / 4 );
+
+		$user_location = array( $validated['lat'], $validated['lng'] );
+		$destinations  = array();
+
+		foreach ( $venues as $venue ) {
+			$lat = $venue['geometry']['location']['lat'] ?? null;
+			$lng = $venue['geometry']['location']['lng'] ?? null;
+			if ( $lat && $lng ) {
+				$destinations[] = array( $lat, $lng );
+			}
+		}
+
+		if ( empty( $destinations ) ) {
+			return $venues;
+		}
+
+		$matrix = $this->directions->distance_matrix(
+			array( $user_location ),
+			$destinations,
+			$validated['mode']
+		);
+
+		if ( is_wp_error( $matrix ) ) {
+			return $venues; // Can't filter, return all
+		}
+
+		$filtered = array();
+		$elements = $matrix[0]['elements'] ?? array();
+
+		foreach ( $venues as $index => $venue ) {
+			$element = $elements[ $index ] ?? null;
+			if ( ! $element || 'OK' !== ( $element['status'] ?? '' ) ) {
+				$filtered[] = $venue; // Can't determine, include it
 				continue;
 			}
 
-			$candidate['score']   = ( $candidate['score'] ?? 1 ) * self::SBRN_BOOST;
-			$existing_sources     = isset( $candidate['sources'] ) && is_array( $candidate['sources'] ) ? $candidate['sources'] : array();
-			$existing_sources[]   = 'sbrn';
-			$candidate['sources'] = array_values( array_unique( $existing_sources ) );
+			$duration_minutes = ( $element['duration']['value'] ?? 0 ) / 60;
+			if ( $duration_minutes <= $max_travel_minutes ) {
+				$venue['travel_minutes'] = round( $duration_minutes );
+				$venue['travel_text']    = $element['duration']['text'] ?? '';
+				$filtered[]              = $venue;
+			}
 		}
-		unset( $candidate );
 
-		return $candidates;
+		return $filtered;
 	}
 
 	/**
-	 * Stage 5: LLM ordering and narrative generation.
+	 * Stage 4: LLM ordering via Gemini (optional).
 	 *
-	 * @param array<string, mixed>             $request
-	 * @param array<int, array<string, mixed>> $candidates
-	 * @return array<string, mixed>|WP_Error
+	 * @param array<string, mixed>             $validated
+	 * @param array<int, array<string, mixed>> $venues
+	 * @return array<int, array<string, mixed>>|WP_Error
 	 */
-	private function stage_llm_ordering( array $request, array $candidates ) {
-		if ( empty( $candidates ) ) {
-			return array(
-				'candidates' => $candidates,
-				'itinerary'  => array(
-					'items' => array(),
-					'meta'  => array(),
-				),
-				'meta'       => array(
-					'prompt_version'  => self::LLM_PROMPT_VERSION,
-					'cached'          => false,
-					'candidate_count' => 0,
-				),
-			);
+	private function stage_llm_ordering( array $validated, array $venues ) {
+		// Skip LLM if not configured or few venues
+		if ( null === $this->gemini || count( $venues ) <= 3 ) {
+			return $this->simple_sort_by_rating( $venues );
 		}
 
-		$prepared = $this->prepare_llm_candidates( $candidates );
-		if ( empty( $prepared ) ) {
-			return array(
-				'candidates' => $candidates,
-				'itinerary'  => array(
-					'items' => array(),
-					'meta'  => array(),
-				),
-				'meta'       => array(
-					'prompt_version'  => self::LLM_PROMPT_VERSION,
-					'cached'          => false,
-					'candidate_count' => count( $candidates ),
-				),
-			);
-		}
+		// Limit candidates for LLM
+		$candidates = array_slice( $venues, 0, self::LLM_MAX_CANDIDATES );
 
-		$context   = $this->build_llm_context( $request, $prepared );
-		$cache_key = array(
-			'context' => $context,
-			'version' => self::LLM_PROMPT_VERSION,
+		// Build LLM prompt
+		$prompt_text = $this->build_ordering_prompt( $validated, $candidates );
+
+		// Format for Gemini API
+		$payload = array(
+			'contents' => array(
+				array(
+					'parts' => array(
+						array( 'text' => $prompt_text ),
+					),
+				),
+			),
 		);
 
-		$cached = $this->cache->get( 'llm', $cache_key );
-		if ( $cached ) {
-			if ( ! isset( $cached['meta'] ) || ! is_array( $cached['meta'] ) ) {
-				$cached['meta'] = array();
-			}
-			$cached['meta']['cached'] = true;
-			return $cached;
-		}
-
-		$payload  = $this->build_llm_payload( $context );
 		$response = $this->gemini->generate_content( $payload );
 		if ( is_wp_error( $response ) ) {
 			return $response;
 		}
 
-		$text = $this->extract_gemini_text( $response );
-		if ( is_wp_error( $text ) ) {
-			return $text;
-		}
+		// Parse LLM response and reorder
+		$ordered = $this->parse_llm_ordering( $response, $candidates );
 
-		$decoded = json_decode( $text, true );
-		if ( ! is_array( $decoded ) ) {
-			return new WP_Error( 'batp_llm_invalid_json', __( 'Gemini response was not valid JSON.', 'brooklyn-ai-planner' ) );
-		}
-
-		$items = $this->normalize_llm_items( isset( $decoded['items'] ) && is_array( $decoded['items'] ) ? $decoded['items'] : array() );
-
-		$itinerary = array(
-			'items' => $items,
-			'meta'  => isset( $decoded['meta'] ) && is_array( $decoded['meta'] ) ? $decoded['meta'] : array(),
-		);
-
-		$ordered_candidates = $this->apply_llm_order_to_candidates( $candidates, $items );
-
-		$result = array(
-			'candidates' => $ordered_candidates,
-			'itinerary'  => $itinerary,
-			'meta'       => array(
-				'prompt_version'  => self::LLM_PROMPT_VERSION,
-				'cached'          => false,
-				'candidate_count' => count( $candidates ),
-			),
-		);
-
-		$this->cache->set( 'llm', $cache_key, $result, Cache_Service::TTL_GEMINI );
-
-		return $result;
+		return $ordered;
 	}
 
 	/**
+	 * Build LLM prompt for venue ordering.
+	 *
+	 * @param array<string, mixed>             $validated
+	 * @param array<int, array<string, mixed>> $candidates
+	 * @return string
+	 */
+	private function build_ordering_prompt( array $validated, array $candidates ): string {
+		$venue_list = '';
+		foreach ( $candidates as $i => $venue ) {
+			$name    = $venue['name'] ?? 'Unknown';
+			$types   = implode( ', ', array_slice( $venue['types'] ?? array(), 0, 3 ) );
+			$rating  = $venue['rating'] ?? 'N/A';
+			$address = $venue['formatted_address'] ?? '';
+
+			$venue_list .= sprintf( "%d. %s (%s) - Rating: %s - %s\n", $i + 1, $name, $types, $rating, $address );
+		}
+
+		$interests_str = implode( ', ', $validated['interests'] );
+		$time_str      = $validated['time_window'] . ' minutes';
+
+		return <<<PROMPT
+You are a Brooklyn trip planner. Given these venues, select the best 3-5 for a {$time_str} itinerary focused on: {$interests_str}.
+
+Order them by optimal visiting sequence (consider variety, flow, and proximity).
+
+Venues:
+{$venue_list}
+
+Respond with ONLY a JSON array of venue numbers in optimal order, e.g.: [3, 1, 5, 2]
+PROMPT;
+	}
+
+	/**
+	 * Parse LLM ordering response.
+	 *
+	 * @param array<string, mixed>             $response
 	 * @param array<int, array<string, mixed>> $candidates
 	 * @return array<int, array<string, mixed>>
 	 */
-	private function prepare_llm_candidates( array $candidates ): array {
-		$limited  = array_slice( $candidates, 0, self::LLM_MAX_CANDIDATES );
-		$prepared = array();
+	private function parse_llm_ordering( array $response, array $candidates ): array {
+		$text = $response['candidates'][0]['content']['parts'][0]['text'] ?? '';
 
-		foreach ( $limited as $candidate ) {
-			$slug = $this->normalize_slug( $candidate['slug'] ?? null );
-			if ( '' === $slug ) {
-				continue;
-			}
-
-			$data       = isset( $candidate['data'] ) && is_array( $candidate['data'] ) ? $candidate['data'] : array();
-			$categories = isset( $data['categories'] ) && is_array( $data['categories'] ) ? $data['categories'] : array();
-			$prepared[] = array(
-				'slug'           => $slug,
-				'name'           => sanitize_text_field( $data['name'] ?? $slug ),
-				'borough'        => sanitize_text_field( $data['borough'] ?? '' ),
-				'budget'         => sanitize_text_field( (string) ( $data['budget'] ?? '' ) ),
-				'categories'     => array_values( array_filter( array_map( 'sanitize_text_field', (array) $categories ) ) ),
-				'vibe_summary'   => sanitize_text_field( $data['vibe_summary'] ?? '' ),
-				'website'        => esc_url_raw( $data['website'] ?? '' ),
-				'phone_number'   => sanitize_text_field( $data['phone'] ?? '' ), // Map DB 'phone' to 'phone_number'
-				'address'        => sanitize_text_field( $data['address'] ?? '' ),
-				'travel_minutes' => isset( $candidate['meta']['travel_minutes'] ) ? (int) $candidate['meta']['travel_minutes'] : null,
-				'sources'        => isset( $candidate['sources'] ) && is_array( $candidate['sources'] ) ? array_values( $candidate['sources'] ) : array(),
-				'score'          => isset( $candidate['score'] ) ? (float) $candidate['score'] : null,
-			);
-		}
-
-		return $prepared;
-	}
-
-	/**
-	 * @param array<string, mixed>             $request
-	 * @param array<int, array<string, mixed>> $candidates
-	 * @return array<string, mixed>
-	 */
-	private function build_llm_context( array $request, array $candidates ): array {
-		$interests     = $this->sanitize_string_array( (array) ( $request['interests'] ?? array() ) );
-		$accessibility = isset( $request['accessibility_preferences'] ) ? $this->sanitize_string_array( (array) $request['accessibility_preferences'] ) : array();
-		$time_window   = isset( $request['time_window'] ) ? (int) $request['time_window'] : 240;
-		$max_travel    = $this->max_travel_minutes( $time_window );
-		$party_size    = isset( $request['party_size'] ) ? (int) $request['party_size'] : 2;
-
-		return array(
-			'version'     => self::LLM_PROMPT_VERSION,
-			'profile'     => array(
-				'interests'     => $interests,
-				'budget'        => sanitize_text_field( (string) ( $request['budget'] ?? 'medium' ) ),
-				'time_window'   => $time_window,
-				'accessibility' => $accessibility,
-				'party_size'    => max( 1, $party_size ),
-			),
-			'constraints' => array(
-				'max_travel_minutes' => $max_travel,
-				'candidate_count'    => count( $candidates ),
-			),
-			'candidates'  => $candidates,
-		);
-	}
-
-	/**
-	 * @param array<string, mixed> $context
-	 * @return array<string, mixed>
-	 */
-	private function build_llm_payload( array $context ): array {
-		$instructions = 'You are the Brooklyn AI Trip Concierge. Using only the provided venue candidates, build an ordered same-day itinerary. Reference travel time, accessibility, and budget constraints. Respond ONLY with JSON (no markdown) following this schema: {"meta":{"summary":"..."},"items":[{"slug":"venue-slug","title":"string","order":1,"arrival_minute":0,"duration_minutes":60,"notes":"string"}]}.';
-		$json_context = wp_json_encode( $context );
-		if ( false === $json_context ) {
-			$json_context = json_encode( $context );
-		}
-
-		return array(
-			'contents'         => array(
-				array(
-					'role'  => 'user',
-					'parts' => array(
-						array( 'text' => $instructions ),
-						array( 'text' => (string) $json_context ),
-					),
-				),
-			),
-			'generationConfig' => array(
-				'maxOutputTokens'  => 768,
-				'temperature'      => 0.4,
-				'responseMimeType' => 'application/json',
-			),
-		);
-	}
-
-	/**
-	 * @param array<string, mixed> $response
-	 * @return string|WP_Error
-	 */
-	private function extract_gemini_text( array $response ) {
-		if ( empty( $response['candidates'][0]['content']['parts'] ) ) {
-			return new WP_Error( 'batp_llm_missing_text', __( 'Gemini response missing text.', 'brooklyn-ai-planner' ) );
-		}
-
-		$parts = $response['candidates'][0]['content']['parts'];
-		foreach ( $parts as $part ) {
-			if ( isset( $part['text'] ) && '' !== trim( (string) $part['text'] ) ) {
-				$text = trim( (string) $part['text'] );
-				if ( str_starts_with( $text, '```' ) ) {
-					$text = preg_replace( '/^```(?:json)?/i', '', $text );
-					$text = preg_replace( '/```$/', '', $text );
+		// Extract JSON array from response
+		if ( preg_match( '/\[[\d,\s]+\]/', $text, $matches ) ) {
+			$order = json_decode( $matches[0], true );
+			if ( is_array( $order ) ) {
+				$ordered = array();
+				foreach ( $order as $index ) {
+					$idx = (int) $index - 1; // Convert to 0-indexed
+					if ( isset( $candidates[ $idx ] ) ) {
+						$ordered[] = $candidates[ $idx ];
+					}
 				}
-				return trim( $text );
+				if ( ! empty( $ordered ) ) {
+					return $ordered;
+				}
 			}
 		}
 
-		return new WP_Error( 'batp_llm_missing_text', __( 'Gemini response missing text.', 'brooklyn-ai-planner' ) );
+		// Fallback to rating sort
+		return $this->simple_sort_by_rating( $candidates );
 	}
 
 	/**
-	 * @param array<int, mixed> $items
+	 * Simple sort by rating (fallback).
+	 *
+	 * @param array<int, array<string, mixed>> $venues
 	 * @return array<int, array<string, mixed>>
 	 */
-	private function normalize_llm_items( array $items ): array {
+	private function simple_sort_by_rating( array $venues ): array {
+		usort(
+			$venues,
+			function ( $a, $b ) {
+				$rating_a = $a['rating'] ?? 0;
+				$rating_b = $b['rating'] ?? 0;
+				return $rating_b <=> $rating_a;
+			}
+		);
+		return array_slice( $venues, 0, 5 ); // Max 5 venues
+	}
+
+	/**
+	 * Stage 5: Get multi-stop directions.
+	 *
+	 * @param array<string, mixed>             $validated
+	 * @param array<int, array<string, mixed>> $venues
+	 * @return array<string, mixed>|WP_Error
+	 */
+	private function stage_get_directions( array $validated, array $venues ) {
+		if ( null === $this->directions || empty( $venues ) ) {
+			return new WP_Error( 'batp_no_directions', __( 'Directions not available.', 'brooklyn-ai-planner' ) );
+		}
+
+		$origin    = array( $validated['lat'], $validated['lng'] );
+		$waypoints = array();
+
+		foreach ( $venues as $venue ) {
+			$lat = $venue['geometry']['location']['lat'] ?? null;
+			$lng = $venue['geometry']['location']['lng'] ?? null;
+			if ( $lat && $lng ) {
+				$waypoints[] = array( $lat, $lng );
+			}
+		}
+
+		if ( empty( $waypoints ) ) {
+			return new WP_Error( 'batp_no_waypoints', __( 'No valid venue coordinates.', 'brooklyn-ai-planner' ) );
+		}
+
+		return $this->directions->get_multi_stop_route( $origin, $waypoints, $validated['mode'] );
+	}
+
+	/**
+	 * Normalize venues for frontend response.
+	 *
+	 * @param array<int, array<string, mixed>> $venues
+	 * @return array<int, array<string, mixed>>
+	 */
+	private function normalize_venues_for_response( array $venues ): array {
 		$normalized = array();
-		foreach ( $items as $index => $item ) {
-			if ( ! is_array( $item ) ) {
-				continue;
+
+		foreach ( $venues as $index => $venue ) {
+			$photos = array();
+			if ( isset( $venue['photos'] ) && is_array( $venue['photos'] ) ) {
+				foreach ( array_slice( $venue['photos'], 0, 3 ) as $photo ) {
+					$ref = $photo['photo_reference'] ?? '';
+					if ( '' !== $ref ) {
+						$photos[] = $this->places->get_photo_url( $ref, 400 );
+					}
+				}
 			}
 
-			$slug = $this->normalize_slug( $item['slug'] ?? null );
-			if ( '' === $slug ) {
-				continue;
-			}
+			$lat = $venue['geometry']['location']['lat'] ?? 0;
+			$lng = $venue['geometry']['location']['lng'] ?? 0;
 
 			$normalized[] = array(
-				'slug'             => $slug,
-				'title'            => sanitize_text_field( $item['title'] ?? '' ),
-				'order'            => isset( $item['order'] ) ? (int) $item['order'] : $index + 1,
-				'arrival_minute'   => isset( $item['arrival_minute'] ) ? (int) $item['arrival_minute'] : 0,
-				'duration_minutes' => isset( $item['duration_minutes'] ) ? (int) $item['duration_minutes'] : 0,
-				'notes'            => isset( $item['notes'] ) ? sanitize_text_field( $item['notes'] ) : '',
-				'sources'          => isset( $item['sources'] ) && is_array( $item['sources'] ) ? $this->sanitize_string_array( $item['sources'] ) : array(),
+				'slug'     => $venue['place_id'] ?? '',
+				'place_id' => $venue['place_id'] ?? '',
+				'data'     => array(
+					'id'           => $venue['place_id'] ?? '',
+					'name'         => $venue['name'] ?? '',
+					'address'      => $venue['formatted_address'] ?? '',
+					'latitude'     => $lat,
+					'longitude'    => $lng,
+					'phone'        => $venue['formatted_phone_number'] ?? '',
+					'website'      => $venue['website'] ?? '',
+					'hours'        => $this->format_hours( $venue['opening_hours'] ?? array() ),
+					'rating'       => $venue['rating'] ?? 0,
+					'price_level'  => $venue['price_level'] ?? 2,
+					'types'        => $venue['types'] ?? array(),
+					'photos'       => $photos,
+					'vibe_summary' => $this->generate_vibe_summary( $venue ),
+				),
+				'score'    => $venue['rating'] ?? 0,
+				'sources'  => array( 'google_places' ),
+				'order'    => $index + 1,
 			);
 		}
 
@@ -1136,197 +683,122 @@ class Engine {
 	}
 
 	/**
-	 * @param array<int, array<string, mixed>> $candidates
-	 * @param array<int, array<string, mixed>> $items
-	 * @return array<int, array<string, mixed>>
+	 * Format opening hours for display.
+	 *
+	 * @param array<string, mixed> $hours_data
+	 * @return array<string, string>|null
 	 */
-	private function apply_llm_order_to_candidates( array $candidates, array $items ): array {
-		if ( empty( $items ) ) {
-			return $candidates;
+	private function format_hours( array $hours_data ): ?array {
+		if ( empty( $hours_data['weekday_text'] ) ) {
+			return null;
 		}
 
-		$indexed = array();
-		foreach ( $candidates as $candidate ) {
-			$slug = $this->normalize_slug( $candidate['slug'] ?? null );
-			if ( '' === $slug ) {
-				continue;
+		$formatted = array();
+		foreach ( $hours_data['weekday_text'] as $day_text ) {
+			// Parse "Monday: 9:00 AM – 5:00 PM"
+			if ( preg_match( '/^(\w+):\s*(.+)$/', $day_text, $matches ) ) {
+				$formatted[ $matches[1] ] = $matches[2];
 			}
-			$indexed[ $slug ] = $candidate;
 		}
 
-		$ordered = array();
-		$used    = array();
-		foreach ( $items as $item ) {
-			$slug = $item['slug'];
-			if ( ! isset( $indexed[ $slug ] ) ) {
-				continue;
-			}
-
-			$candidate            = $indexed[ $slug ];
-			$meta                 = isset( $candidate['meta'] ) && is_array( $candidate['meta'] ) ? $candidate['meta'] : array();
-			$meta['llm']          = array(
-				'title'            => $item['title'],
-				'order'            => $item['order'],
-				'arrival_minute'   => $item['arrival_minute'],
-				'duration_minutes' => $item['duration_minutes'],
-				'notes'            => $item['notes'],
-			);
-			$candidate['meta']    = $meta;
-			$sources              = isset( $candidate['sources'] ) && is_array( $candidate['sources'] ) ? $candidate['sources'] : array();
-			$sources[]            = 'llm';
-			$candidate['sources'] = array_values( array_unique( array_merge( $sources, $item['sources'] ?? array() ) ) );
-
-			$ordered[] = $candidate;
-			$used[]    = $slug;
-		}
-
-		foreach ( $candidates as $candidate ) {
-			$slug = $this->normalize_slug( $candidate['slug'] ?? null );
-			if ( '' !== $slug && in_array( $slug, $used, true ) ) {
-				continue;
-			}
-			$ordered[] = $candidate;
-		}
-
-		return $ordered;
-	}
-
-	private function build_interest_prompt( array $data ): string {
-		$interests = array_map( 'sanitize_text_field', (array) $data['interests'] );
-		$budget    = sanitize_text_field( (string) ( $data['budget'] ?? 'medium' ) );
-		$time      = isset( $data['time_window'] ) ? (int) $data['time_window'] : 240;
-
-		$segments = array(
-			empty( $interests ) ? 'general brooklyn interests' : implode( ', ', $interests ),
-			sprintf( 'budget:%s', $budget ),
-			sprintf( 'duration_minutes:%d', $time ),
-		);
-
-		return implode( ' | ', array_filter( $segments ) );
+		return $formatted;
 	}
 
 	/**
-	 * @return array<int, float>|WP_Error
+	 * Generate a vibe summary from venue types.
+	 *
+	 * @param array<string, mixed> $venue
+	 * @return string
 	 */
-	private function get_interest_embedding( string $prompt ) {
-		$cache_key = array(
-			'type'   => 'interest_embedding',
-			'prompt' => $prompt,
+	private function generate_vibe_summary( array $venue ): string {
+		$name  = $venue['name'] ?? '';
+		$types = $venue['types'] ?? array();
+
+		// Map types to descriptive phrases
+		$type_phrases = array(
+			'restaurant'         => 'dining spot',
+			'cafe'               => 'cozy café',
+			'bar'                => 'local bar',
+			'night_club'         => 'nightlife venue',
+			'museum'             => 'cultural attraction',
+			'art_gallery'        => 'art space',
+			'park'               => 'outdoor space',
+			'tourist_attraction' => 'must-see attraction',
 		);
 
-		$cached = $this->cache->get( 'embedding', $cache_key );
-		if ( $cached ) {
-			return is_array( $cached ) ? $cached : array();
+		$phrase = 'local spot';
+		foreach ( $types as $type ) {
+			if ( isset( $type_phrases[ $type ] ) ) {
+				$phrase = $type_phrases[ $type ];
+				break;
+			}
 		}
 
-		$payload = array(
-			'content' => array(
-				'parts' => array(
-					array(
-						'text' => $prompt,
-					),
-				),
+		$rating      = $venue['rating'] ?? 0;
+		$rating_text = $rating >= 4.5 ? 'highly-rated' : ( $rating >= 4.0 ? 'popular' : '' );
+
+		return trim( sprintf( '%s %s in Brooklyn.', $rating_text, $phrase ) );
+	}
+
+	/**
+	 * Build itinerary structure.
+	 *
+	 * @param array<int, array<string, mixed>> $venues
+	 * @param array<string, mixed>             $directions
+	 * @return array<string, mixed>
+	 */
+	private function build_itinerary( array $venues, array $directions ): array {
+		$items = array();
+
+		foreach ( $venues as $index => $venue ) {
+			$items[] = array(
+				'slug'             => $venue['slug'],
+				'title'            => $venue['data']['name'] ?? '',
+				'order'            => $index + 1,
+				'arrival_minute'   => 0, // Could calculate from directions
+				'duration_minutes' => 45, // Default visit time
+				'notes'            => $venue['data']['vibe_summary'] ?? '',
+			);
+		}
+
+		return array(
+			'items' => $items,
+			'meta'  => array(
+				'venue_count'  => count( $items ),
+				'maps_url'     => $directions['overview_url'] ?? '#',
+				'total_travel' => $directions['total_text'] ?? '',
 			),
 		);
-
-		$response = $this->gemini->embed_content( $payload );
-		if ( is_wp_error( $response ) ) {
-			return $response;
-		}
-
-		$values = $this->parse_embedding_response( $response );
-		if ( is_wp_error( $values ) ) {
-			return $values;
-		}
-
-		$this->cache->set( 'embedding', $cache_key, $values, Cache_Service::TTL_PIPELINE );
-
-		return $values;
 	}
 
 	/**
-	 * @return array<int, float>|WP_Error
+	 * Map user interest to Google Places type.
+	 *
+	 * @param string $interest
+	 * @return string
 	 */
-	private function parse_embedding_response( array $response ) {
-		if ( isset( $response['embedding']['values'] ) && is_array( $response['embedding']['values'] ) ) {
-			return array_map( 'floatval', $response['embedding']['values'] );
-		}
-
-		if ( isset( $response['embeddings'][0]['values'] ) && is_array( $response['embeddings'][0]['values'] ) ) {
-			return array_map( 'floatval', $response['embeddings'][0]['values'] );
-		}
-
-		return new WP_Error( 'batp_gemini_embedding_missing', __( 'Gemini did not return embedding values.', 'brooklyn-ai-planner' ) );
+	private function map_interest_to_places_type( string $interest ): string {
+		$key = strtolower( trim( $interest ) );
+		return self::INTEREST_TYPE_MAP[ $key ] ?? 'point_of_interest';
 	}
 
 	/**
-	 * @param array<int, string> $slugs
-	 * @return array<string, array<string, mixed>>|WP_Error
+	 * Log itinerary to analytics.
+	 *
+	 * @param array<string, mixed> $request
+	 * @param array<string, mixed> $response
 	 */
-	private function load_venues_by_slugs( array $slugs ) {
-		$normalized = array();
-		foreach ( $slugs as $slug ) {
-			$clean = $this->normalize_slug( $slug );
-			if ( '' !== $clean ) {
-				$normalized[] = $clean;
-			}
-		}
-
-		$unique = array_values( array_unique( $normalized ) );
-		if ( empty( $unique ) ) {
-			return array();
-		}
-
-		$response = $this->supabase->select_in(
-			'venues',
-			'slug',
-			$unique,
-			array(
-				'select' => self::VENUE_SELECT_FIELDS,
-				'limit'  => 200,
-			)
-		);
-
-		if ( is_wp_error( $response ) ) {
-			return $response;
-		}
-
-		$records = array();
-		foreach ( $response as $record ) {
-			if ( isset( $record['slug'] ) ) {
-				$records[ (string) $record['slug'] ] = $record;
-			}
-		}
-
-		return $records;
-	}
-
-	private function cache_venue_record( string $slug, array $record ): void {
-		$this->venue_cache[ $slug ] = array_merge( array( 'slug' => $slug ), $record );
-	}
-
-	private function normalize_slug( $value ): string {
-		return $value ? sanitize_title( (string) $value ) : '';
-	}
-
-	private function log_stage_error( string $stage, WP_Error $error ): void {
+	private function log_itinerary( array $request, array $response ): void {
 		$this->analytics->log(
-			'engine_error',
+			'itinerary_generated',
 			array(
 				'metadata' => array(
-					'stage'   => $stage,
-					'message' => $error->get_error_message(),
-					'code'    => $error->get_error_code(),
+					'interests'   => $request['interests'] ?? array(),
+					'venue_count' => count( $response['candidates'] ?? array() ),
+					'lat'         => $request['lat'] ?? 0,
+					'lng'         => $request['lng'] ?? 0,
+					'pipeline'    => 'google_places_v2',
 				),
-			)
-		);
-	}
-
-	private function log_stage_success( string $stage, array $meta = array() ): void {
-		$this->analytics->log(
-			'engine_stage_complete',
-			array(
-				'metadata' => array_merge( array( 'stage' => $stage ), $meta ),
 			)
 		);
 	}

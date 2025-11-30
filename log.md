@@ -195,6 +195,62 @@
   - MBA Boost: Table accessible (empty, needs rule generation)
   - Itinerary: 3 items generated successfully
 
+## 2025-11-30 (Sprint 8: UI/UX Enhancements Complete)
+
+### Analytics & Reporting Fixes
+- **Issue:** `itinerary_generated` events not logging to Supabase
+- **Root Cause 1:** Metadata was being double-encoded (JSON string in JSON payload)
+- **Fix:** Updated `Analytics_Logger` to pass metadata as array, not pre-encoded JSON
+- **Root Cause 2:** Cache hits bypassed analytics logging entirely
+- **Fix:** Added `log_itinerary()` call in cache-hit branch of `Engine::generate_itinerary()`
+- **Root Cause 3:** Reports page used broken RPC function `get_analytics_stats` that counted wrong events
+- **Fix:** Replaced RPC with direct `select_in` query for `itinerary_generated`, `website_click`, `phone_click`, `directions_click`
+- **Issue:** Double-counting (16→18 per generation instead of 16→17)
+- **Root Cause:** Both frontend JS and backend Engine logged `itinerary_generated`
+- **Fix:** Removed frontend tracking; backend handles it
+
+### Location Input Enhancement
+- **Added:** Neighborhood dropdown with 18 Brooklyn neighborhoods
+- **Added:** "Use My Current Location" option with browser geolocation
+- **Implementation:** Each neighborhood has pre-defined lat/lng coordinates stored as data attributes
+- **Files Modified:** `render.php` (dropdown HTML), `view.js` (geolocation handling)
+
+### Business Description Enhancement
+- **Added:** `generateDescription()` helper in `view.js`
+- **Logic:** Uses rating, price_level, types from Places API; falls back to "A local Brooklyn favorite."
+- **Format:** "Rated 4.5★ • $$ • restaurant, bar"
+
+### Editable Itinerary
+- **Added:** Remove button (×) on each card with hover state (gray → red)
+- **Added:** Re-numbering after removal
+- **Added:** Meta text update after removal
+- **CSS:** `.batp-card__remove` with absolute positioning, `.batp-card__rating` badge
+
+### Multi-Stop Directions
+- **Added:** "Get Full Route Directions" button at top of list
+- **Implementation:** `buildMultiStopUrl()` constructs Google Maps URL with origin, destination, waypoints
+- **Format:** `https://www.google.com/maps/dir/?api=1&origin=lat,lng&destination=lat,lng&waypoints=lat,lng|lat,lng&travelmode=walking`
+
+### Code Quality
+- **Refactored:** Nested ternary in `view.js` to if/else
+- **Fixed:** Duplicate `.batp-card` selector in `style.scss`
+- **Fixed:** Missing translators comments for i18n placeholders
+- **Updated:** PHPStan baseline (33 ignored errors)
+- **Updated:** EngineTest to use Google_Places_Client/Google_Directions_Client instead of removed Pinecone_Client
+- **Note:** Engine unit tests need further refactoring to match new pipeline (marked for future sprint)
+
+### Files Modified
+- `src/brooklyn-ai-planner/view.js` - Location handling, descriptions, remove buttons, multi-stop directions
+- `src/brooklyn-ai-planner/render.php` - Neighborhood dropdown with coordinates
+- `src/brooklyn-ai-planner/style.scss` - Remove button, route header, rating badge styles
+- `includes/class-analytics-logger.php` - Fixed double-encoding, added debug logging
+- `includes/class-engine.php` - Added analytics logging on cache hits
+- `includes/clients/class-supabase-client.php` - Improved error logging
+- `includes/clients/class-google-places-client.php` - Added translators comments
+- `includes/clients/class-google-directions-client.php` - Added translators comments
+- `admin/class-reports-page.php` - Direct query instead of RPC
+- `tests/phpunit/EngineTest.php` - Updated for new Engine constructor
+
 
 
 

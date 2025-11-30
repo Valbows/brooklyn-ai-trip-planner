@@ -63,12 +63,13 @@ class REST_Controller extends WP_REST_Controller {
 							'required'          => true,
 							'type'              => 'string',
 							'validate_callback' => function ( $param ) {
-								return in_array( $param, array( 'website_click', 'phone_click', 'directions_click' ), true );
+								return in_array( $param, array( 'website_click', 'phone_click', 'directions_click', 'itinerary_generated' ), true );
 							},
 						),
-						'venue_id'    => array(
-							'required' => false,
-							'type'     => 'string',
+						'place_id'    => array(
+							'required'    => false,
+							'type'        => 'string',
+							'description' => 'Google Places ID for the venue.',
 						),
 						'metadata'    => array(
 							'required' => false,
@@ -103,7 +104,7 @@ class REST_Controller extends WP_REST_Controller {
 		$result = $logger->log(
 			$params['action_type'],
 			array(
-				'venue_id' => $params['venue_id'] ?? null,
+				'place_id' => $params['place_id'] ?? null,
 				'metadata' => $params['metadata'] ?? array(),
 			)
 		);

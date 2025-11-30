@@ -87,10 +87,35 @@ $wrapper_attrs = get_block_wrapper_attributes( array(
 					<!-- Location -->
 					<div class="batp-form__input-group batp-form__input-group--location">
 						<span class="batp-form__section-label">Your Location</span>
-						<input type="text" name="neighborhood" placeholder="e.g., Brooklyn Heights, or use current location" value="Brooklyn Heights" required />
-						<input type="hidden" name="latitude" />
-						<input type="hidden" name="longitude" />
-						<!-- Geolocation trigger could be added back here as an icon action -->
+						<div class="batp-location-wrapper">
+							<select name="neighborhood" id="batp-neighborhood-select" required>
+								<option value="">Select a neighborhood...</option>
+								<option value="current_location">📍 Use My Current Location</option>
+								<optgroup label="Brooklyn Neighborhoods">
+									<option value="Williamsburg" data-lat="40.7081" data-lng="-73.9571">Williamsburg</option>
+									<option value="DUMBO" data-lat="40.7033" data-lng="-73.9881">DUMBO</option>
+									<option value="Park Slope" data-lat="40.6710" data-lng="-73.9814">Park Slope</option>
+									<option value="Brooklyn Heights" data-lat="40.6960" data-lng="-73.9936" selected>Brooklyn Heights</option>
+									<option value="Bedford-Stuyvesant" data-lat="40.6872" data-lng="-73.9418">Bedford-Stuyvesant</option>
+									<option value="Crown Heights" data-lat="40.6694" data-lng="-73.9422">Crown Heights</option>
+									<option value="Bushwick" data-lat="40.6944" data-lng="-73.9213">Bushwick</option>
+									<option value="Greenpoint" data-lat="40.7304" data-lng="-73.9514">Greenpoint</option>
+									<option value="Fort Greene" data-lat="40.6920" data-lng="-73.9740">Fort Greene</option>
+									<option value="Cobble Hill" data-lat="40.6860" data-lng="-73.9969">Cobble Hill</option>
+									<option value="Carroll Gardens" data-lat="40.6795" data-lng="-73.9991">Carroll Gardens</option>
+									<option value="Red Hook" data-lat="40.6734" data-lng="-74.0086">Red Hook</option>
+									<option value="Prospect Heights" data-lat="40.6775" data-lng="-73.9692">Prospect Heights</option>
+									<option value="Clinton Hill" data-lat="40.6890" data-lng="-73.9660">Clinton Hill</option>
+									<option value="Boerum Hill" data-lat="40.6850" data-lng="-73.9840">Boerum Hill</option>
+									<option value="Flatbush" data-lat="40.6501" data-lng="-73.9496">Flatbush</option>
+									<option value="Bay Ridge" data-lat="40.6340" data-lng="-74.0287">Bay Ridge</option>
+									<option value="Sunset Park" data-lat="40.6453" data-lng="-74.0128">Sunset Park</option>
+								</optgroup>
+							</select>
+							<span class="batp-location-status" id="batp-location-status"></span>
+						</div>
+						<input type="hidden" name="latitude" id="batp-lat-input" />
+						<input type="hidden" name="longitude" id="batp-lng-input" />
 					</div>
 
 					<!-- Time -->

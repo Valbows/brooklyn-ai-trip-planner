@@ -19,6 +19,88 @@ const initItineraryForm = () => {
 		form.querySelectorAll( '.batp-form__chip input[type="checkbox"]' )
 	);
 
+	// 0. Location Selection (Neighborhood + Geolocation)
+	const neighborhoodSelect = document.getElementById(
+		'batp-neighborhood-select'
+	);
+	const latInput = document.getElementById( 'batp-lat-input' );
+	const lngInput = document.getElementById( 'batp-lng-input' );
+	const locationStatus = document.getElementById( 'batp-location-status' );
+
+	// Set initial coords from selected option
+	const setLocationFromOption = ( option ) => {
+		if ( option && option.dataset.lat && option.dataset.lng ) {
+			latInput.value = option.dataset.lat;
+			lngInput.value = option.dataset.lng;
+			if ( locationStatus ) {
+				locationStatus.textContent = '';
+			}
+		}
+	};
+
+	// Initialize with default selection
+	if ( neighborhoodSelect ) {
+		const selectedOption =
+			neighborhoodSelect.options[ neighborhoodSelect.selectedIndex ];
+		setLocationFromOption( selectedOption );
+
+		neighborhoodSelect.addEventListener( 'change', ( e ) => {
+			const option = e.target.options[ e.target.selectedIndex ];
+
+			if ( option.value === 'current_location' ) {
+				// Trigger geolocation
+				if ( locationStatus ) {
+					locationStatus.textContent = '📡 Getting location...';
+				}
+
+				if ( navigator.geolocation ) {
+					navigator.geolocation.getCurrentPosition(
+						( position ) => {
+							latInput.value = position.coords.latitude;
+							lngInput.value = position.coords.longitude;
+							if ( locationStatus ) {
+								locationStatus.textContent =
+									'✅ Location found!';
+							}
+							console.log(
+								'BATP Geolocation:',
+								position.coords.latitude,
+								position.coords.longitude
+							);
+						},
+						( error ) => {
+							console.error( 'Geolocation error:', error );
+							if ( locationStatus ) {
+								locationStatus.textContent =
+									'❌ Location failed';
+							}
+							alert(
+								'Could not get your location. Please select a neighborhood.'
+							);
+							neighborhoodSelect.value = 'Brooklyn Heights';
+							setLocationFromOption(
+								neighborhoodSelect.options[
+									neighborhoodSelect.selectedIndex
+								]
+							);
+						},
+						{ enableHighAccuracy: true, timeout: 10000 }
+					);
+				} else {
+					alert( 'Geolocation is not supported by your browser.' );
+					neighborhoodSelect.value = 'Brooklyn Heights';
+					setLocationFromOption(
+						neighborhoodSelect.options[
+							neighborhoodSelect.selectedIndex
+						]
+					);
+				}
+			} else {
+				setLocationFromOption( option );
+			}
+		} );
+	}
+
 	// 1. Chip Interactions
 	chips.forEach( ( input ) => {
 		input.addEventListener( 'change', () => {
@@ -224,26 +306,44 @@ const initItineraryForm = () => {
 			metaText.textContent = `${ itineraryItems.length } venues found • ${ duration } hours available`;
 		}
 
-		// Build Map Locations
+		// Build Map Locations and Candidate Map
 		const locations = [];
 		const candidateMap = new Map(
 			( data.candidates || [] ).map( ( c ) => [ c.slug, c ] )
 		);
 
-		itineraryItems.forEach( ( item ) => {
+		// Store directions URL from API response
+		const multiStopDirectionsUrl = data.directions?.overview_url || '#';
+
+		itineraryItems.forEach( ( item, idx ) => {
 			const candidate = candidateMap.get( item.slug );
-			if (
-				candidate &&
-				candidate.data?.latitude &&
-				candidate.data?.longitude
-			) {
+			const lat = candidate?.data?.latitude;
+			const lng = candidate?.data?.longitude;
+
+			// Debug: Log each item's location data
+			console.log( `BATP Map: Item ${ idx + 1 } (${ item.slug }):`, {
+				lat,
+				lng,
+				title: item.title,
+			} );
+
+			if ( lat && lng && lat !== 0 && lng !== 0 ) {
 				locations.push( {
-					lat: parseFloat( candidate.data.latitude ),
-					lng: parseFloat( candidate.data.longitude ),
+					lat: parseFloat( lat ),
+					lng: parseFloat( lng ),
 					title: item.title,
+					placeId: item.slug, // For analytics
 				} );
+			} else {
+				console.warn(
+					`BATP Map: Missing coordinates for item ${ idx + 1 }: ${
+						item.title
+					}`
+				);
 			}
 		} );
+
+		console.log( 'BATP Map: Total locations for map:', locations.length );
 
 		// Helper: Format Hours
 		const getHoursString = ( hoursData ) => {
@@ -264,51 +364,152 @@ const initItineraryForm = () => {
 			return hoursData[ dayName ] || 'Open today';
 		};
 
+		// Build multi-stop directions URL
+		const buildMultiStopUrl = ( locs ) => {
+			if ( locs.length === 0 ) {
+				return '#';
+			}
+			const origin = `${ locs[ 0 ].lat },${ locs[ 0 ].lng }`;
+			const destination = `${ locs[ locs.length - 1 ].lat },${
+				locs[ locs.length - 1 ].lng
+			}`;
+			const waypoints = locs
+				.slice( 1, -1 )
+				.map( ( l ) => `${ l.lat },${ l.lng }` )
+				.join( '|' );
+			let url = `https://www.google.com/maps/dir/?api=1&origin=${ origin }&destination=${ destination }&travelmode=walking`;
+			if ( waypoints ) {
+				url += `&waypoints=${ waypoints }`;
+			}
+			return url;
+		};
+
+		// Use API-provided URL or build our own
+		const fullRouteUrl =
+			multiStopDirectionsUrl !== '#'
+				? multiStopDirectionsUrl
+				: buildMultiStopUrl( locations );
+
+		// Helper: Generate description from venue data
+		const generateDescription = ( details, itemDesc ) => {
+			if ( itemDesc && itemDesc.length > 10 ) {
+				return itemDesc;
+			}
+			if ( details.vibe_summary ) {
+				return details.vibe_summary;
+			}
+
+			// Build from available data
+			const parts = [];
+			const rating = details.rating ? `${ details.rating }★` : '';
+			const priceLevel = details.price_level
+				? '$'.repeat( details.price_level )
+				: '';
+			const types =
+				details.types
+					?.slice( 0, 2 )
+					.map( ( t ) => t.replace( /_/g, ' ' ) )
+					.join( ', ' ) || '';
+
+			if ( rating ) {
+				parts.push( `Rated ${ rating }` );
+			}
+			if ( priceLevel ) {
+				parts.push( priceLevel );
+			}
+			if ( types ) {
+				parts.push( types );
+			}
+
+			return parts.length > 0
+				? parts.join( ' • ' )
+				: 'A local Brooklyn favorite.';
+		};
+
+		// State for editable itinerary
+		let currentItems = [ ...itineraryItems ];
+
 		// Render List View (Cards)
 		const renderList = ( items ) => {
 			if ( ! listOutput ) {
 				return;
 			}
 
-			listOutput.innerHTML = items
-				.map( ( item, index ) => {
-					const candidate = candidateMap.get( item.slug );
-					const details = candidate?.data || {};
-					const website = details.website || '#';
-					const phone = details.phone_number || details.phone || '';
-					const address = details.address || '';
-					const vibe = details.vibe_summary || item.description || '';
-					const hours = details.hours
-						? getHoursString( details.hours )
-						: 'Open today';
+			// Add multi-stop directions header
+			const headerHtml = `
+				<div class="batp-route-header">
+					<a href="${ fullRouteUrl }" target="_blank" class="batp-route-btn" data-event-action="directions_click" data-place-id="full_route">
+						<span class="dashicons dashicons-location-alt"></span> 
+						<strong>Get Full Route Directions</strong>
+						<span class="batp-route-btn__subtitle">Open all ${ items.length } stops in Google Maps</span>
+					</a>
+				</div>
+			`;
 
-					// Directions URL
-					let dirUrl = '#';
-					if ( details.latitude && details.longitude ) {
-						dirUrl = `https://www.google.com/maps/dir/?api=1&destination=${ details.latitude },${ details.longitude }`;
-					} else if ( address ) {
-						dirUrl = `https://www.google.com/maps/dir/?api=1&destination=${ encodeURIComponent(
-							address
-						) }`;
-					} else {
-						dirUrl = `https://www.google.com/maps/dir/?api=1&destination=${ encodeURIComponent(
-							item.title + ', Brooklyn, NY'
-						) }`;
-					}
+			listOutput.innerHTML =
+				headerHtml +
+				items
+					.map( ( item, index ) => {
+						const candidate = candidateMap.get( item.slug );
+						const details = candidate?.data || {};
+						const website = details.website || '#';
+						const phone =
+							details.phone_number || details.phone || '';
+						const address = details.address || '';
+						const description = generateDescription(
+							details,
+							item.description
+						);
+						let hours = 'See hours on website';
+						if ( details.hours ) {
+							hours = getHoursString( details.hours );
+						} else if ( details.opening_hours?.open_now ) {
+							hours = 'Open now';
+						}
 
-					return `
-				<div class="batp-card" data-access='${ JSON.stringify(
+						// Single venue directions URL (fallback)
+						let dirUrl = '#';
+						if ( details.latitude && details.longitude ) {
+							dirUrl = `https://www.google.com/maps/dir/?api=1&destination=${ details.latitude },${ details.longitude }`;
+						} else if ( address ) {
+							dirUrl = `https://www.google.com/maps/dir/?api=1&destination=${ encodeURIComponent(
+								address
+							) }`;
+						} else {
+							dirUrl = `https://www.google.com/maps/dir/?api=1&destination=${ encodeURIComponent(
+								item.title + ', Brooklyn, NY'
+							) }`;
+						}
+
+						// Place ID for analytics (Google Places ID)
+						const placeId = candidate?.place_id || item.slug || '';
+
+						return `
+				<div class="batp-card" data-slug="${
+					item.slug
+				}" data-access='${ JSON.stringify(
 					details.accessibility || []
 				) }'>
+					<button class="batp-card__remove" data-remove-slug="${
+						item.slug
+					}" title="Remove from itinerary">×</button>
 					<div class="batp-card__header">
 						<div>
-							<span class="batp-card__status">Open Now</span>
+							<span class="batp-card__status">${
+								details.opening_hours?.open_now !== false
+									? 'Open Now'
+									: 'Check Hours'
+							}</span>
 							<h3 class="batp-card__title">${ index + 1 }. ${ item.title }</h3>
-							<span class="batp-card__tag">Best Match</span>
+							${
+								details.rating
+									? `<span class="batp-card__rating">⭐ ${ details.rating }</span>`
+									: ''
+							}
 						</div>
 					</div>
 					
-					<p class="batp-card__description">${ vibe }</p>
+					<p class="batp-card__description">${ description }</p>
 					
 					<div class="batp-card__details">
 						${
@@ -322,39 +523,56 @@ const initItineraryForm = () => {
 								? `<a href="tel:${ phone.replace(
 										/[^0-9+]/g,
 										''
-								  ) }" class="batp-card__link-row" data-event-action="phone_click" data-venue-id="${
-										details.id
-								  }"><span class="dashicons dashicons-phone"></span> ${ phone }</a>`
+								  ) }" class="batp-card__link-row" data-event-action="phone_click" data-place-id="${ placeId }"><span class="dashicons dashicons-phone"></span> ${ phone }</a>`
 								: ''
 						}
 					</div>
 
 					<div class="batp-card__footer">
-						<a href="${ dirUrl }" target="_blank" class="batp-card__btn-directions" data-event-action="directions_click" data-venue-id="${
-							details.id
-						}">
+						<a href="${ dirUrl }" target="_blank" class="batp-card__btn-directions" data-event-action="directions_click" data-place-id="${ placeId }">
 							<span class="dashicons dashicons-location-alt"></span> Directions
 						</a>
 						<div class="batp-card__links">
 							${
 								website !== '#'
-									? `<a href="${ website }" target="_blank" data-event-action="website_click" data-venue-id="${
-											details.id
-									  }" data-event-meta='${ JSON.stringify( {
-											url: website,
-									  } ) }'><span class="dashicons dashicons-admin-site"></span> Website</a>`
+									? `<a href="${ website }" target="_blank" data-event-action="website_click" data-place-id="${ placeId }" data-event-meta='${ JSON.stringify(
+											{
+												url: website,
+											}
+									  ) }'><span class="dashicons dashicons-admin-site"></span> Website</a>`
 									: ''
 							}
 						</div>
 					</div>
 				</div>
 				`;
-				} )
-				.join( '' );
+					} )
+					.join( '' );
+
+			// Handle remove button clicks
+			listOutput
+				.querySelectorAll( '.batp-card__remove' )
+				.forEach( ( btn ) => {
+					btn.addEventListener( 'click', ( e ) => {
+						e.preventDefault();
+						const slugToRemove = btn.dataset.removeSlug;
+						currentItems = currentItems.filter(
+							( i ) => i.slug !== slugToRemove
+						);
+						renderList( currentItems );
+						// Update meta text
+						if ( metaText ) {
+							const duration = form.querySelector(
+								'select[name="duration"]'
+							).value;
+							metaText.textContent = `${ currentItems.length } venues found • ${ duration } hours available`;
+						}
+					} );
+				} );
 		};
 
 		// Initial Render
-		renderList( itineraryItems );
+		renderList( currentItems );
 
 		// --- MODAL LOGIC ---
 		const setupModal = ( modalId, triggerBtn ) => {
@@ -485,13 +703,16 @@ const initItineraryForm = () => {
 	};
 
 	// 5. Analytics Logic
-	const trackEvent = async ( action, venueId, metadata = {} ) => {
+	const trackEvent = async ( action, placeId, metadata = {} ) => {
 		const nonce = form.dataset.nonce;
 		const restNonce = form.dataset.restNonce;
 		const baseApiUrl = form.dataset.apiUrl; // .../v1/itinerary
 		const eventsUrl = baseApiUrl.replace( '/itinerary', '/events' );
 
+		console.log( 'BATP trackEvent:', action, placeId, metadata );
+
 		if ( ! nonce || ! eventsUrl ) {
+			console.warn( 'BATP trackEvent: Missing nonce or eventsUrl' );
 			return;
 		}
 
@@ -499,8 +720,7 @@ const initItineraryForm = () => {
 		const finalMeta = { ...metadata, source: 'web_client' };
 
 		try {
-			// console.log( 'BATP Analytics:', action, venueId, finalMeta );
-			await fetch( eventsUrl, {
+			const response = await fetch( eventsUrl, {
 				method: 'POST',
 				keepalive: true,
 				headers: {
@@ -509,32 +729,34 @@ const initItineraryForm = () => {
 				},
 				body: JSON.stringify( {
 					action_type: action,
-					venue_id: venueId,
+					place_id: placeId, // Use place_id for Google Places
 					metadata: finalMeta,
 					nonce,
 				} ),
 			} );
+			console.log(
+				'BATP trackEvent response:',
+				response.status,
+				response.ok
+			);
 		} catch ( err ) {
-			// Silent fail
-			console.warn( 'Analytics fail', err );
+			console.warn( 'BATP Analytics fail:', err );
 		}
 	};
 
-	// Event Delegation
+	// Event Delegation - Track clicks on website/directions
 	if ( listOutput ) {
 		listOutput.addEventListener( 'click', ( e ) => {
 			const target = e.target.closest( '[data-event-action]' );
 			if ( target ) {
 				const action = target.dataset.eventAction;
-				const venueId = target.dataset.venueId;
+				const placeId = target.dataset.placeId || ''; // Use place_id for Google Places
 				const meta = target.dataset.eventMeta
 					? JSON.parse( target.dataset.eventMeta )
 					: {};
 
-				// DEBUG: Verify click
-				// alert( 'Tracking: ' + action );
-
-				trackEvent( action, venueId, meta );
+				console.log( 'BATP Analytics:', action, placeId, meta );
+				trackEvent( action, placeId, meta );
 			}
 		} );
 	}
@@ -553,8 +775,22 @@ const initItineraryForm = () => {
 		}
 
 		const formData = new FormData( form );
+
+		// Get lat/lng from hidden inputs (populated by neighborhood selection)
+		const lat = parseFloat( formData.get( 'latitude' ) ) || 40.6782;
+		const lng = parseFloat( formData.get( 'longitude' ) ) || -73.9442;
+		const selectedNeighborhood = formData.get( 'neighborhood' );
+
+		console.log( 'BATP Form: Submitting with location:', {
+			neighborhood: selectedNeighborhood,
+			lat,
+			lng,
+		} );
+
 		const payload = {
-			neighborhood: formData.get( 'neighborhood' ),
+			neighborhood: selectedNeighborhood,
+			lat,
+			lng,
 			interests: formData.getAll( 'interests[]' ),
 			budget: formData.get( 'budget' ),
 			duration: Number( formData.get( 'duration' ) ) * 60,
@@ -584,6 +820,9 @@ const initItineraryForm = () => {
 					result.message || 'Error generating itinerary'
 				);
 			}
+
+			// Note: itinerary_generated is logged by backend Engine, not frontend
+			// to avoid double-counting
 
 			renderResults( result, apiKey );
 		} catch ( error ) {

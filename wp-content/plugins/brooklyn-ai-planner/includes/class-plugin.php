@@ -12,11 +12,9 @@ use BrooklynAI\Admin\Reports_Page;
 use BrooklynAI\API\REST_Controller;
 use BrooklynAI\Clients\Gemini_Client;
 use BrooklynAI\Clients\GoogleMaps_Client;
-use BrooklynAI\Clients\Pinecone_Client;
+use BrooklynAI\Clients\Google_Places_Client;
+use BrooklynAI\Clients\Google_Directions_Client;
 use BrooklynAI\Clients\Supabase_Client;
-use BrooklynAI\Ingestion\Venue_Enrichment_Service;
-use BrooklynAI\Ingestion\Venue_Ingestion_Manager;
-use BrooklynAI\MBA\MBA_Generator;
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
@@ -32,9 +30,10 @@ class Plugin {
 	private Reports_Page $reports_page;
 	private REST_Controller $rest_controller;
 	private Supabase_Client $supabase;
-	private ?Pinecone_Client $pinecone = null;
-	private ?Gemini_Client $gemini     = null;
-	private ?GoogleMaps_Client $maps   = null;
+	private ?Gemini_Client $gemini                       = null;
+	private ?GoogleMaps_Client $maps                     = null;
+	private ?Google_Places_Client $google_places         = null;
+	private ?Google_Directions_Client $google_directions = null;
 	/**
 	 * @var array<string, mixed>
 	 */
@@ -50,13 +49,12 @@ class Plugin {
 
 	public static function activate(): void {
 		flush_rewrite_rules();
-		if ( ! wp_next_scheduled( 'batp_daily_mba_refresh' ) ) {
-			wp_schedule_event( time(), 'daily', 'batp_daily_mba_refresh' );
-		}
+		// MBA scheduled jobs removed - using Google Places API for real-time data
 	}
 
 	public static function deactivate(): void {
 		flush_rewrite_rules();
+		// Clean up any legacy MBA scheduled hooks
 		wp_clear_scheduled_hook( 'batp_daily_mba_refresh' );
 	}
 
@@ -91,7 +89,7 @@ class Plugin {
 	private function register_hooks(): void {
 		add_action( 'init', array( $this, 'register_blocks' ) );
 		add_action( 'rest_api_init', array( $this->rest_controller, 'register_routes' ) );
-		add_action( 'batp_daily_mba_refresh', array( $this, 'run_scheduled_mba' ) );
+		// MBA scheduled hook removed - using Google Places API
 		$this->settings_page->register();
 		$this->reports_page->register();
 	}
@@ -103,15 +101,8 @@ class Plugin {
 	}
 
 	private function register_cli_commands(): void {
+		// Only diagnostics command remains - ingest and MBA removed (using Google Places API)
 		$commands = array(
-			'batp ingest'      => array(
-				'file'  => BATP_PLUGIN_PATH . 'includes/cli/class-batp-ingest-command.php',
-				'class' => '\\BrooklynAI\\CLI\\Batp_Ingest_Command',
-			),
-			'batp mba'         => array(
-				'file'  => BATP_PLUGIN_PATH . 'includes/cli/class-batp-mba-command.php',
-				'class' => '\\BrooklynAI\\CLI\\Batp_Mba_Command',
-			),
 			'batp diagnostics' => array(
 				'file'  => BATP_PLUGIN_PATH . 'includes/cli/class-batp-diagnostics-command.php',
 				'class' => '\\BrooklynAI\\CLI\\Batp_Diagnostics_Command',
@@ -146,19 +137,36 @@ class Plugin {
 		return $this->analytics;
 	}
 
-	public function pinecone(): ?Pinecone_Client {
-		if ( null === $this->pinecone ) {
-			$api_key    = $this->setting_with_env_fallback( 'pinecone_api_key', 'BATP_PINECONE_API_KEY' );
-			$index_host = $this->setting_with_env_fallback( 'pinecone_index_host', 'BATP_PINECONE_INDEX_HOST' );
-			$ssl_flag   = strtolower( $this->setting_with_env_fallback( 'pinecone_disable_ssl_verify', 'BATP_PINECONE_DISABLE_SSL_VERIFY', 'false' ) );
-			$verify_ssl = ! in_array( $ssl_flag, array( '1', 'true', 'yes' ), true );
-
-			if ( '' !== $api_key && '' !== $index_host ) {
-				$this->pinecone = new Pinecone_Client( $api_key, $index_host, $verify_ssl );
+	/**
+	 * Get Google Places API client.
+	 *
+	 * @return Google_Places_Client|null
+	 */
+	public function google_places(): ?Google_Places_Client {
+		if ( null === $this->google_places ) {
+			$api_key = $this->get_maps_api_key();
+			if ( '' !== $api_key ) {
+				$this->google_places = new Google_Places_Client( $api_key );
 			}
 		}
 
-		return $this->pinecone;
+		return $this->google_places;
+	}
+
+	/**
+	 * Get Google Directions API client.
+	 *
+	 * @return Google_Directions_Client|null
+	 */
+	public function google_directions(): ?Google_Directions_Client {
+		if ( null === $this->google_directions ) {
+			$api_key = $this->get_maps_api_key();
+			if ( '' !== $api_key ) {
+				$this->google_directions = new Google_Directions_Client( $api_key );
+			}
+		}
+
+		return $this->google_directions;
 	}
 
 	public function gemini(): ?Gemini_Client {
@@ -212,9 +220,7 @@ class Plugin {
 		return trim( $this->get_setting( $option_key, $default_value ) );
 	}
 
-	public function run_scheduled_mba(): void {
-		$this->supabase()->run_mba_job();
-	}
+	// MBA scheduled job removed - using Google Places API for real-time data
 
 	public function register_blocks(): void {
 		$manifest = BATP_PLUGIN_PATH . 'build/blocks-manifest.php';
@@ -240,24 +246,14 @@ class Plugin {
 		return new Engine(
 			$this->security,
 			$this->cache,
-			$this->pinecone(),
 			$this->supabase,
+			$this->google_places(),
+			$this->google_directions(),
 			$this->maps(),
 			$this->gemini(),
 			$this->analytics
 		);
 	}
 
-	public function ingestion_manager(): Venue_Ingestion_Manager {
-		return new Venue_Ingestion_Manager(
-			$this->supabase(),
-			$this->pinecone(),
-			new Venue_Enrichment_Service( $this->gemini() ?? new Gemini_Client( 'dry-run-placeholder' ) ),
-			$this->analytics()
-		);
-	}
-
-	public function mba_generator(): MBA_Generator {
-		return new MBA_Generator( $this->supabase() );
-	}
+	// ingestion_manager() and mba_generator() removed - using Google Places API
 }

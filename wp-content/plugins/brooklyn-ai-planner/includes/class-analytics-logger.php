@@ -22,7 +22,10 @@ class Analytics_Logger {
 	}
 
 	/**
-	 * @param array{session_hash?:string,venue_id?:string,metadata?:array<string, mixed>} $context
+	 * Log an analytics event.
+	 *
+	 * @param string $action_type Event type (e.g., 'itinerary_generated', 'website_click').
+	 * @param array{session_hash?:string,place_id?:string,metadata?:array<string, mixed>} $context
 	 * @return true|WP_Error
 	 */
 	public function log( string $action_type, array $context = array() ) {
@@ -30,25 +33,38 @@ class Analytics_Logger {
 		$seed    = isset( $context['session_hash'] ) ? $context['session_hash'] : '';
 		$session = $this->hash_session( $seed );
 
-		// Ensure venue_id is null if empty/missing (Supabase rejects empty string for UUID)
-		$raw_venue_id = isset( $context['venue_id'] ) ? $context['venue_id'] : null;
-		$venue_id     = ( null !== $raw_venue_id && '' !== $raw_venue_id ) ? sanitize_text_field( $raw_venue_id ) : null;
+		// Use place_id for Google Places references (string, not UUID)
+		$place_id = isset( $context['place_id'] ) && '' !== $context['place_id']
+			? sanitize_text_field( $context['place_id'] )
+			: null;
 
-		$metadata = isset( $context['metadata'] ) ? $context['metadata'] : null;
+		// Pass metadata as array - Supabase client handles JSON encoding
+		// Do NOT pre-encode or it will be double-encoded
+		$metadata = isset( $context['metadata'] ) && is_array( $context['metadata'] )
+			? $context['metadata']
+			: null;
 
 		$payload = array(
 			'action_type'  => $action,
 			'session_hash' => $session,
-			'venue_id'     => $venue_id,
 			'metadata'     => $metadata,
 		);
+
+		// Only include place_id if provided
+		if ( null !== $place_id ) {
+			$payload['place_id'] = $place_id;
+		}
+
+		error_log( 'BATP Analytics: Logging event "' . $action . '" with metadata: ' . wp_json_encode( $metadata ) );
 
 		$response = $this->client->insert( 'analytics_logs', $payload );
 
 		if ( is_wp_error( $response ) ) {
+			error_log( 'BATP Analytics Error: ' . $response->get_error_message() );
 			return $response;
 		}
 
+		error_log( 'BATP Analytics: Successfully logged "' . $action . '"' );
 		return true;
 	}
 

@@ -344,6 +344,21 @@ class Supabase_Client {
 	 * @param array<string, mixed> $context
 	 */
 	private function format_error( array $context ): WP_Error {
-		return new WP_Error( 'batp_supabase_http_error', __( 'Supabase request failed.', 'brooklyn-ai-planner' ), $context );
+		$message = 'Supabase request failed.';
+
+		// Extract detailed error from Supabase response
+		if ( isset( $context['body']['message'] ) ) {
+			$message .= ' Error: ' . $context['body']['message'];
+		}
+		if ( isset( $context['body']['hint'] ) ) {
+			$message .= ' Hint: ' . $context['body']['hint'];
+		}
+		if ( isset( $context['body']['details'] ) ) {
+			$message .= ' Details: ' . $context['body']['details'];
+		}
+
+		error_log( 'BATP Supabase Error: ' . $message . ' | Status: ' . ( $context['status'] ?? 'unknown' ) . ' | Path: ' . ( $context['path'] ?? 'unknown' ) );
+
+		return new WP_Error( 'batp_supabase_http_error', $message, $context );
 	}
 }

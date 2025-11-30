@@ -15,6 +15,52 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class Reports_Page {
 
+	/**
+	 * Get event counts directly from analytics_logs table.
+	 *
+	 * @param \BrooklynAI\Clients\Supabase_Client $supabase Supabase client.
+	 * @param string                              $start_date Start date in ISO format.
+	 * @return array|\WP_Error
+	 */
+	private function get_event_counts( $supabase, string $start_date ) {
+		$data = array(
+			'itineraries' => 0,
+			'clicks'      => array(
+				'website'    => 0,
+				'phone'      => 0,
+				'directions' => 0,
+			),
+		);
+
+		// Query all relevant events from last 30 days using select_in
+		$action_types = array( 'itinerary_generated', 'website_click', 'phone_click', 'directions_click' );
+		$response     = $supabase->select_in( 'analytics_logs', 'action_type', $action_types, array( 'select' => 'action_type' ) );
+
+		if ( is_wp_error( $response ) ) {
+			return $response;
+		}
+
+		// Count events by type
+		foreach ( $response as $row ) {
+			switch ( $row['action_type'] ?? '' ) {
+				case 'itinerary_generated':
+					++$data['itineraries'];
+					break;
+				case 'website_click':
+					++$data['clicks']['website'];
+					break;
+				case 'phone_click':
+					++$data['clicks']['phone'];
+					break;
+				case 'directions_click':
+					++$data['clicks']['directions'];
+					break;
+			}
+		}
+
+		return $data;
+	}
+
 	public function register(): void {
 		add_action( 'admin_menu', array( $this, 'add_menu' ) );
 	}
@@ -33,8 +79,9 @@ class Reports_Page {
 	public function render(): void {
 		$supabase = Plugin::instance()->supabase();
 
-		// Default: Last 30 days
-		$response = $supabase->rpc( 'get_analytics_stats' );
+		// Calculate date range (last 30 days)
+		$end_date   = gmdate( 'Y-m-d\TH:i:s\Z' );
+		$start_date = gmdate( 'Y-m-d\TH:i:s\Z', strtotime( '-30 days' ) );
 
 		$data = array(
 			'itineraries' => 0,
@@ -47,14 +94,12 @@ class Reports_Page {
 
 		$error = null;
 
-		if ( is_wp_error( $response ) ) {
-			$error = $response->get_error_message();
-			// Fallback for dev/demo if RPC missing
-			if ( strpos( $error, 'function' ) !== false ) {
-				$error .= ' (Please run migration 060_analytics_reporting.sql)';
-			}
+		// Direct count queries for accurate stats
+		$counts = $this->get_event_counts( $supabase, $start_date );
+		if ( is_wp_error( $counts ) ) {
+			$error = $counts->get_error_message();
 		} else {
-			$data = $response;
+			$data = $counts;
 		}
 
 		?>

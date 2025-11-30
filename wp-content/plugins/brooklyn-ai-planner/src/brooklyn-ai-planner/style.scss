@@ -313,6 +313,7 @@ $shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.
 }
 
 .batp-card {
+	position: relative;
 	background: #fff;
 	border: 1px solid #e2e8f0;
 	border-radius: $radius-card;
@@ -436,6 +437,38 @@ $shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.
 				text-decoration: underline;
 			}
 		}
+	}
+
+	&__remove {
+		position: absolute;
+		top: 0.5rem;
+		right: 0.5rem;
+		width: 28px;
+		height: 28px;
+		border: none;
+		background: rgba(0, 0, 0, 0.1);
+		color: $color-text-dark;
+		border-radius: 50%;
+		font-size: 1.25rem;
+		line-height: 1;
+		cursor: pointer;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		transition: background 0.2s, color 0.2s;
+		z-index: 10;
+
+		&:hover {
+			background: #ef4444;
+			color: #fff;
+		}
+	}
+
+	&__rating {
+		display: inline-block;
+		font-size: 0.85rem;
+		color: #f59e0b;
+		margin-left: 0.5rem;
 	}
 }
 
@@ -705,3 +738,65 @@ $shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.
 		background: color.scale($color-primary-blue, $lightness: -5%);
 	}
 }
+
+// Location Wrapper
+.batp-location-wrapper {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+
+	select {
+		flex: 1;
+	}
+}
+
+.batp-location-status {
+	font-size: 0.85rem;
+	white-space: nowrap;
+}
+
+// Route Header (Multi-stop Directions)
+.batp-route-header {
+	grid-column: 1 / -1;
+	margin-bottom: 1rem;
+}
+
+.batp-route-btn {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 0.25rem;
+	width: 100%;
+	padding: 1rem 1.5rem;
+	background: linear-gradient(135deg, $color-primary-blue 0%, #3b82f6 100%);
+	color: #fff;
+	border-radius: $radius-btn;
+	text-decoration: none;
+	text-align: center;
+	transition: transform 0.2s, box-shadow 0.2s;
+	box-shadow: $shadow-card;
+
+	.dashicons {
+		font-size: 1.5rem;
+		width: auto;
+		height: auto;
+	}
+
+	strong {
+		font-size: 1.1rem;
+		text-transform: uppercase;
+	}
+
+	&__subtitle {
+		font-size: 0.85rem;
+		opacity: 0.9;
+	}
+
+	&:hover {
+		transform: translateY(-2px);
+		box-shadow: 0 8px 12px rgba(0, 0, 0, 0.15);
+		color: #fff;
+	}
+}
+

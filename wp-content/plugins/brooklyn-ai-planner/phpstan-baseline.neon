@@ -1,6 +1,11 @@
 parameters:
 	ignoreErrors:
 		-
+			message: "#^Method BrooklynAI\\\\Admin\\\\Reports_Page\\:\\:get_event_counts\\(\\) return type has no value type specified in iterable type array\\.$#"
+			count: 1
+			path: admin/class-reports-page.php
+
+		-
 			message: "#^Else branch is unreachable because ternary operator condition is always true\\.$#"
 			count: 1
 			path: admin/class-settings-page.php
@@ -36,67 +41,37 @@ parameters:
 			path: includes/api/class-rest-controller.php
 
 		-
-			message: "#^Method BrooklynAI\\\\Engine\\:\\:apply_lift\\(\\) has no return type specified\\.$#"
+			message: "#^Right side of && is always true\\.$#"
+			count: 1
+			path: includes/class-analytics-logger.php
+
+		-
+			message: "#^Constant BrooklynAI\\\\Engine\\:\\:LLM_PROMPT_VERSION is unused\\.$#"
 			count: 1
 			path: includes/class-engine.php
 
 		-
-			message: "#^Method BrooklynAI\\\\Engine\\:\\:apply_lift\\(\\) has parameter \\$score with no type specified\\.$#"
+			message: "#^Method BrooklynAI\\\\Engine\\:\\:stage_apply_filters\\(\\) never returns WP_Error so it can be removed from the return type\\.$#"
 			count: 1
 			path: includes/class-engine.php
 
 		-
-			message: "#^Method BrooklynAI\\\\Engine\\:\\:build_interest_prompt\\(\\) has parameter \\$data with no value type specified in iterable type array\\.$#"
+			message: "#^Method BrooklynAI\\\\Engine\\:\\:stage_fetch_details\\(\\) never returns WP_Error so it can be removed from the return type\\.$#"
 			count: 1
 			path: includes/class-engine.php
 
 		-
-			message: "#^Method BrooklynAI\\\\Engine\\:\\:cache_venue_record\\(\\) has parameter \\$record with no value type specified in iterable type array\\.$#"
+			message: "#^Method BrooklynAI\\\\Engine\\:\\:stage_places_search\\(\\) never returns WP_Error so it can be removed from the return type\\.$#"
 			count: 1
 			path: includes/class-engine.php
 
 		-
-			message: "#^Method BrooklynAI\\\\Engine\\:\\:combine_scores\\(\\) has no return type specified\\.$#"
+			message: "#^Property BrooklynAI\\\\Engine\\:\\:\\$maps is never read, only written\\.$#"
 			count: 1
 			path: includes/class-engine.php
 
 		-
-			message: "#^Method BrooklynAI\\\\Engine\\:\\:combine_scores\\(\\) has parameter \\$primary with no type specified\\.$#"
-			count: 1
-			path: includes/class-engine.php
-
-		-
-			message: "#^Method BrooklynAI\\\\Engine\\:\\:combine_scores\\(\\) has parameter \\$secondary with no type specified\\.$#"
-			count: 1
-			path: includes/class-engine.php
-
-		-
-			message: "#^Method BrooklynAI\\\\Engine\\:\\:log_stage_success\\(\\) has parameter \\$meta with no value type specified in iterable type array\\.$#"
-			count: 1
-			path: includes/class-engine.php
-
-		-
-			message: "#^Method BrooklynAI\\\\Engine\\:\\:normalize_budget\\(\\) has parameter \\$budget with no type specified\\.$#"
-			count: 1
-			path: includes/class-engine.php
-
-		-
-			message: "#^Method BrooklynAI\\\\Engine\\:\\:normalize_slug\\(\\) has parameter \\$value with no type specified\\.$#"
-			count: 1
-			path: includes/class-engine.php
-
-		-
-			message: "#^Method BrooklynAI\\\\Engine\\:\\:parse_embedding_response\\(\\) has parameter \\$response with no value type specified in iterable type array\\.$#"
-			count: 1
-			path: includes/class-engine.php
-
-		-
-			message: "#^Method BrooklynAI\\\\Engine\\:\\:resolve_origin\\(\\) has parameter \\$request with no value type specified in iterable type array\\.$#"
-			count: 1
-			path: includes/class-engine.php
-
-		-
-			message: "#^Method BrooklynAI\\\\Engine\\:\\:resolve_origin\\(\\) return type has no value type specified in iterable type array\\.$#"
+			message: "#^Property BrooklynAI\\\\Engine\\:\\:\\$supabase is never read, only written\\.$#"
 			count: 1
 			path: includes/class-engine.php
 
@@ -121,6 +96,11 @@ parameters:
 			path: includes/cli/class-batp-diagnostics-command.php
 
 		-
+			message: "#^Method BrooklynAI\\\\CLI\\\\Batp_Diagnostics_Command\\:\\:check_gemini\\(\\) has parameter \\$client with no type specified\\.$#"
+			count: 1
+			path: includes/cli/class-batp-diagnostics-command.php
+
+		-
 			message: "#^Method BrooklynAI\\\\CLI\\\\Batp_Diagnostics_Command\\:\\:connectivity\\(\\) has parameter \\$args with no value type specified in iterable type array\\.$#"
 			count: 1
 			path: includes/cli/class-batp-diagnostics-command.php
@@ -129,106 +109,6 @@ parameters:
 			message: "#^Method BrooklynAI\\\\CLI\\\\Batp_Diagnostics_Command\\:\\:connectivity\\(\\) has parameter \\$assoc_args with no value type specified in iterable type array\\.$#"
 			count: 1
 			path: includes/cli/class-batp-diagnostics-command.php
-
-		-
-			message: "#^Access to constant REQUIRED_COLUMNS on an unknown class BrooklynAI\\\\CLI\\\\Ingestion_Constants\\.$#"
-			count: 1
-			path: includes/cli/class-batp-ingest-command.php
-
-		-
-			message: "#^Call to static method error\\(\\) on an unknown class WP_CLI\\.$#"
-			count: 6
-			path: includes/cli/class-batp-ingest-command.php
-
-		-
-			message: "#^Call to static method log\\(\\) on an unknown class WP_CLI\\.$#"
-			count: 3
-			path: includes/cli/class-batp-ingest-command.php
-
-		-
-			message: "#^Call to static method success\\(\\) on an unknown class WP_CLI\\.$#"
-			count: 2
-			path: includes/cli/class-batp-ingest-command.php
-
-		-
-			message: "#^Call to static method warning\\(\\) on an unknown class WP_CLI\\.$#"
-			count: 4
-			path: includes/cli/class-batp-ingest-command.php
-
-		-
-			message: "#^Function WP_CLI\\\\Utils\\\\get_flag_value not found\\.$#"
-			count: 4
-			path: includes/cli/class-batp-ingest-command.php
-
-		-
-			message: "#^Method BrooklynAI\\\\CLI\\\\Batp_Ingest_Command\\:\\:synthetic\\(\\) has parameter \\$args with no value type specified in iterable type array\\.$#"
-			count: 1
-			path: includes/cli/class-batp-ingest-command.php
-
-		-
-			message: "#^Method BrooklynAI\\\\CLI\\\\Batp_Ingest_Command\\:\\:synthetic\\(\\) has parameter \\$assoc_args with no value type specified in iterable type array\\.$#"
-			count: 1
-			path: includes/cli/class-batp-ingest-command.php
-
-		-
-			message: "#^Method BrooklynAI\\\\CLI\\\\Batp_Ingest_Command\\:\\:venues\\(\\) has parameter \\$args with no value type specified in iterable type array\\.$#"
-			count: 1
-			path: includes/cli/class-batp-ingest-command.php
-
-		-
-			message: "#^Method BrooklynAI\\\\CLI\\\\Batp_Ingest_Command\\:\\:venues\\(\\) has parameter \\$assoc_args with no value type specified in iterable type array\\.$#"
-			count: 1
-			path: includes/cli/class-batp-ingest-command.php
-
-		-
-			message: "#^Call to an undefined method BrooklynAI\\\\Plugin\\:\\:get_supabase_client\\(\\)\\.$#"
-			count: 2
-			path: includes/cli/class-batp-mba-command.php
-
-		-
-			message: "#^Call to static method error\\(\\) on an unknown class WP_CLI\\.$#"
-			count: 4
-			path: includes/cli/class-batp-mba-command.php
-
-		-
-			message: "#^Call to static method log\\(\\) on an unknown class WP_CLI\\.$#"
-			count: 2
-			path: includes/cli/class-batp-mba-command.php
-
-		-
-			message: "#^Call to static method success\\(\\) on an unknown class WP_CLI\\.$#"
-			count: 2
-			path: includes/cli/class-batp-mba-command.php
-
-		-
-			message: "#^Method BrooklynAI\\\\CLI\\\\Batp_Mba_Command\\:\\:run\\(\\) has no return type specified\\.$#"
-			count: 1
-			path: includes/cli/class-batp-mba-command.php
-
-		-
-			message: "#^Method BrooklynAI\\\\CLI\\\\Batp_Mba_Command\\:\\:run\\(\\) has parameter \\$args with no type specified\\.$#"
-			count: 1
-			path: includes/cli/class-batp-mba-command.php
-
-		-
-			message: "#^Method BrooklynAI\\\\CLI\\\\Batp_Mba_Command\\:\\:run\\(\\) has parameter \\$assoc_args with no type specified\\.$#"
-			count: 1
-			path: includes/cli/class-batp-mba-command.php
-
-		-
-			message: "#^Method BrooklynAI\\\\CLI\\\\Batp_Mba_Command\\:\\:status\\(\\) has no return type specified\\.$#"
-			count: 1
-			path: includes/cli/class-batp-mba-command.php
-
-		-
-			message: "#^Method BrooklynAI\\\\CLI\\\\Batp_Mba_Command\\:\\:status\\(\\) has parameter \\$args with no type specified\\.$#"
-			count: 1
-			path: includes/cli/class-batp-mba-command.php
-
-		-
-			message: "#^Method BrooklynAI\\\\CLI\\\\Batp_Mba_Command\\:\\:status\\(\\) has parameter \\$assoc_args with no type specified\\.$#"
-			count: 1
-			path: includes/cli/class-batp-mba-command.php
 
 		-
 			message: "#^Method BrooklynAI\\\\Clients\\\\Gemini_Client\\:\\:handle_response\\(\\) has parameter \\$response with no value type specified in iterable type array\\.$#"
@@ -244,6 +124,11 @@ parameters:
 			message: "#^Method BrooklynAI\\\\Clients\\\\Gemini_Client\\:\\:headers\\(\\) return type has no value type specified in iterable type array\\.$#"
 			count: 1
 			path: includes/clients/class-gemini-client.php
+
+		-
+			message: "#^Method BrooklynAI\\\\Clients\\\\Google_Places_Client\\:\\:get_details\\(\\) has parameter \\$fields with no value type specified in iterable type array\\.$#"
+			count: 1
+			path: includes/clients/class-google-places-client.php
 
 		-
 			message: "#^Method BrooklynAI\\\\Clients\\\\GoogleMaps_Client\\:\\:build_endpoint\\(\\) has parameter \\$params with no value type specified in iterable type array\\.$#"
@@ -271,16 +156,6 @@ parameters:
 			path: includes/clients/class-googlemaps-client.php
 
 		-
-			message: "#^Method BrooklynAI\\\\Clients\\\\Pinecone_Client\\:\\:format_error\\(\\) has parameter \\$context with no value type specified in iterable type array\\.$#"
-			count: 1
-			path: includes/clients/class-pinecone-client.php
-
-		-
-			message: "#^Method BrooklynAI\\\\Clients\\\\Pinecone_Client\\:\\:request\\(\\) return type has no value type specified in iterable type array\\.$#"
-			count: 1
-			path: includes/clients/class-pinecone-client.php
-
-		-
 			message: "#^Method BrooklynAI\\\\Clients\\\\Supabase_Client\\:\\:handle_response\\(\\) has no return type specified\\.$#"
 			count: 1
 			path: includes/clients/class-supabase-client.php
@@ -289,108 +164,3 @@ parameters:
 			message: "#^Method BrooklynAI\\\\Clients\\\\Supabase_Client\\:\\:handle_response\\(\\) has parameter \\$response with no value type specified in iterable type array\\.$#"
 			count: 1
 			path: includes/clients/class-supabase-client.php
-
-		-
-			message: "#^Parameter \\#2 \\$callback of function array_filter expects \\(callable\\(string\\)\\: bool\\)\\|null, 'strlen' given\\.$#"
-			count: 1
-			path: includes/ingestion/class-csv-stream-reader.php
-
-		-
-			message: "#^Property BrooklynAI\\\\Ingestion\\\\Ingestion_Checkpoint\\:\\:\\$last_checksum is never read, only written\\.$#"
-			count: 1
-			path: includes/ingestion/class-ingestion-checkpoint.php
-
-		-
-			message: "#^Method BrooklynAI\\\\Ingestion\\\\Synthetic_Itinerary_Generator\\:\\:pick_pool_value\\(\\) has parameter \\$pool with no value type specified in iterable type array\\.$#"
-			count: 1
-			path: includes/ingestion/class-synthetic-itinerary-generator.php
-
-		-
-			message: "#^Method BrooklynAI\\\\Ingestion\\\\Venue_Enrichment_Service\\:\\:build_pinecone_payload\\(\\) has parameter \\$embedding with no value type specified in iterable type array\\.$#"
-			count: 1
-			path: includes/ingestion/class-venue-enrichment-service.php
-
-		-
-			message: "#^Method BrooklynAI\\\\Ingestion\\\\Venue_Enrichment_Service\\:\\:build_supabase_payload\\(\\) has parameter \\$embedding with no value type specified in iterable type array\\.$#"
-			count: 1
-			path: includes/ingestion/class-venue-enrichment-service.php
-
-		-
-			message: "#^Method BrooklynAI\\\\Ingestion\\\\Venue_Enrichment_Service\\:\\:resolve_slug\\(\\) has parameter \\$venue with no value type specified in iterable type array\\.$#"
-			count: 1
-			path: includes/ingestion/class-venue-enrichment-service.php
-
-		-
-			message: "#^Left side of && is always false\\.$#"
-			count: 1
-			path: includes/ingestion/class-venue-ingestion-manager.php
-
-		-
-			message: "#^Method BrooklynAI\\\\Ingestion\\\\Venue_Ingestion_Manager\\:\\:debug_log\\(\\) has parameter \\$context with no value type specified in iterable type array\\.$#"
-			count: 1
-			path: includes/ingestion/class-venue-ingestion-manager.php
-
-		-
-			message: "#^Method BrooklynAI\\\\Ingestion\\\\Venue_Ingestion_Manager\\:\\:notify_progress\\(\\) has parameter \\$context with no value type specified in iterable type array\\.$#"
-			count: 1
-			path: includes/ingestion/class-venue-ingestion-manager.php
-
-		-
-			message: "#^Method BrooklynAI\\\\Ingestion\\\\Venue_Ingestion_Manager\\:\\:request_with_retry\\(\\) return type has no value type specified in iterable type array\\.$#"
-			count: 1
-			path: includes/ingestion/class-venue-ingestion-manager.php
-
-		-
-			message: "#^Method BrooklynAI\\\\MBA\\\\MBA_Generator\\:\\:evaluate_rule\\(\\) has no return type specified\\.$#"
-			count: 1
-			path: includes/mba/class-mba-generator.php
-
-		-
-			message: "#^Method BrooklynAI\\\\MBA\\\\MBA_Generator\\:\\:evaluate_rule\\(\\) has parameter \\$antecedent with no type specified\\.$#"
-			count: 1
-			path: includes/mba/class-mba-generator.php
-
-		-
-			message: "#^Method BrooklynAI\\\\MBA\\\\MBA_Generator\\:\\:evaluate_rule\\(\\) has parameter \\$consequent with no type specified\\.$#"
-			count: 1
-			path: includes/mba/class-mba-generator.php
-
-		-
-			message: "#^Method BrooklynAI\\\\MBA\\\\MBA_Generator\\:\\:evaluate_rule\\(\\) has parameter \\$frequent_items with no type specified\\.$#"
-			count: 1
-			path: includes/mba/class-mba-generator.php
-
-		-
-			message: "#^Method BrooklynAI\\\\MBA\\\\MBA_Generator\\:\\:evaluate_rule\\(\\) has parameter \\$pair_support with no type specified\\.$#"
-			count: 1
-			path: includes/mba/class-mba-generator.php
-
-		-
-			message: "#^Method BrooklynAI\\\\MBA\\\\MBA_Generator\\:\\:evaluate_rule\\(\\) has parameter \\$rules with no type specified\\.$#"
-			count: 1
-			path: includes/mba/class-mba-generator.php
-
-		-
-			message: "#^Method BrooklynAI\\\\MBA\\\\MBA_Generator\\:\\:fetch_transactions\\(\\) has no return type specified\\.$#"
-			count: 1
-			path: includes/mba/class-mba-generator.php
-
-		-
-			message: "#^Method BrooklynAI\\\\MBA\\\\MBA_Generator\\:\\:group_transactions\\(\\) has no return type specified\\.$#"
-			count: 1
-			path: includes/mba/class-mba-generator.php
-
-		-
-			message: "#^Method BrooklynAI\\\\MBA\\\\MBA_Generator\\:\\:group_transactions\\(\\) has parameter \\$rows with no type specified\\.$#"
-			count: 1
-			path: includes/mba/class-mba-generator.php
-
-		-
-			message: "#^Method BrooklynAI\\\\MBA\\\\MBA_Generator\\:\\:persist_rules\\(\\) has no return type specified\\.$#"
-			count: 1
-			path: includes/mba/class-mba-generator.php
-
-		-
-			message: "#^Method BrooklynAI\\\\MBA\\\\MBA_Generator\\:\\:persist_rules\\(\\) has parameter \\$rules with no type specified\\.$#"
-			count: 1
-			path: includes/mba/class-mba-generator.php

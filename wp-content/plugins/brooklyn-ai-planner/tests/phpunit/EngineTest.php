@@ -11,8 +11,9 @@ use BrooklynAI\Engine;
 use BrooklynAI\Security_Manager;
 use BrooklynAI\Cache_Service;
 use BrooklynAI\Analytics_Logger;
-use BrooklynAI\Clients\Pinecone_Client;
 use BrooklynAI\Clients\Supabase_Client;
+use BrooklynAI\Clients\Google_Places_Client;
+use BrooklynAI\Clients\Google_Directions_Client;
 use BrooklynAI\Clients\GoogleMaps_Client;
 use BrooklynAI\Clients\Gemini_Client;
 use PHPUnit\Framework\TestCase;
@@ -21,8 +22,9 @@ use WP_Error;
 class EngineTest extends TestCase {
 	private $security;
 	private $cache;
-	private $pinecone;
 	private $supabase;
+	private $places;
+	private $directions;
 	private $maps;
 	private $gemini;
 	private $analytics;
@@ -34,8 +36,9 @@ class EngineTest extends TestCase {
 		\Brain\Monkey\setUp();
 		$this->security        = $this->createMock( Security_Manager::class );
 		$this->cache           = $this->createMock( Cache_Service::class );
-		$this->pinecone        = $this->createMock( Pinecone_Client::class );
 		$this->supabase        = $this->createMock( Supabase_Client::class );
+		$this->places          = $this->createMock( Google_Places_Client::class );
+		$this->directions      = $this->createMock( Google_Directions_Client::class );
 		$this->maps            = $this->createMock( GoogleMaps_Client::class );
 		$this->gemini          = $this->createMock( Gemini_Client::class );
 		$this->analytics       = $this->createMock( Analytics_Logger::class );
@@ -50,8 +53,9 @@ class EngineTest extends TestCase {
 		$this->engine = new Engine(
 			$this->security,
 			$this->cache,
-			$this->pinecone,
 			$this->supabase,
+			$this->places,
+			$this->directions,
 			$this->maps,
 			$this->gemini,
 			$this->analytics
